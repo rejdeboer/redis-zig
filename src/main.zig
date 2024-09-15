@@ -9,6 +9,7 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
     const address = try net.Address.resolveIp("127.0.0.1", 6379);
+
     var listener = try address.listen(.{
         .reuse_address = true,
     });
