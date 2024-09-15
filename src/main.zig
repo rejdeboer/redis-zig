@@ -22,7 +22,7 @@ pub fn main() !void {
         defer connection.stream.close();
 
         const client_reader = connection.stream.reader();
-        const client_writer = connection.writer();
+        const client_writer = connection.stream.writer();
         while (true) {
             const msg = try client_reader.readUntilDelimiterOrEofAlloc(gpa, '\n', 65536) orelse break;
             defer gpa.free(msg);
