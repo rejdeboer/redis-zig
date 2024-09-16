@@ -4,7 +4,7 @@ const net = std.net;
 pub fn main() !void {
     var gpa_alloc = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa_alloc.deinit() == .ok);
-    // const gpa = gpa_alloc.allocator();
+    const gpa = gpa_alloc.allocator();
 
     const stdout = std.io.getStdOut().writer();
 
@@ -21,15 +21,14 @@ pub fn main() !void {
         try stdout.print("accepted new connection", .{});
         defer connection.stream.close();
 
-        // const _client_reader = connection.stream.reader();
+        const _client_reader = connection.stream.reader();
         const client_writer = connection.stream.writer();
-        try client_writer.writeAll("+PONG\r\n");
-        // while (true) {
-        //     const msg = try client_reader.readUntilDelimiterOrEofAlloc(gpa, '\n', 65536) orelse break;
-        //     defer gpa.free(msg);
-        //
-        //     std.log.info("Recieved message: \"{}\"", .{std.zig.fmtEscapes(msg)});
-        //
-        // }
+        while (true) {
+            const msg = try client_reader.readUntilDelimiterOrEofAlloc(gpa, '\n\n', 65536) orelse break;
+            defer gpa.free(msg);
+
+            std.log.info("Recieved message: \"{}\"", .{std.zig.fmtEscapes(msg)});
+            try client_writer.writeAll("+PONG\r\n");
+        }
     }
 }
