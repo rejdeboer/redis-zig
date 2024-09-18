@@ -18,17 +18,22 @@ pub fn main() !void {
     while (true) {
         const connection = try listener.accept();
 
-        try stdout.print("accepted new connection", .{});
-        defer connection.stream.close();
+        _ = try std.Thread.spawn(.{}, handle_client, .{ stdout, &gpa, connection });
+    }
+}
 
-        const _client_reader = connection.stream.reader();
-        const client_writer = connection.stream.writer();
-        while (true) {
-            const msg = try client_reader.readUntilDelimiterOrEofAlloc(gpa, '\n\n', 65536) orelse break;
-            defer gpa.free(msg);
+fn handle_client(stdout: anytype, gpa: *const std.mem.Allocator, connection: net.Server.Connection) !void {
+    defer connection.stream.close();
 
-            std.log.info("Recieved message: \"{}\"", .{std.zig.fmtEscapes(msg)});
-            try client_writer.writeAll("+PONG\r\n");
-        }
+    const reader = connection.stream.reader();
+    const writer = connection.stream.writer();
+    try stdout.print("accepted new connection", .{});
+
+    while (true) {
+        const msg = try reader.readUntilDelimiterOrEofAlloc(gpa.*, '\n', 65536) orelse break;
+        defer gpa.free(msg);
+
+        std.log.info("Received message: \"{}\"", .{std.zig.fmtEscapes(msg)});
+        try writer.writeAll("+PONG\r\n");
     }
 }
