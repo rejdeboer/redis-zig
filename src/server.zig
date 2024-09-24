@@ -43,5 +43,6 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
 
         std.log.info("Received message: \"{}\"", .{std.zig.fmtEscapes(buffer[0..read_bytes])});
         try writer.writeAll("+PONG\r\n");
+        std.log.info("Replied with PONG", .{});
     }
 }

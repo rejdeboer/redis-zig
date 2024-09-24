@@ -16,11 +16,11 @@ pub const Redis = struct {
         };
     }
 
-    pub fn ping(self: Redis) !bool {
+    pub fn ping(self: *Redis) !bool {
         const writer = self.stream.writer();
-        const reader = self.stream.reader();
         try writer.writeAll("+PING\r\n");
-        const bytes_read = try reader.readAll(&self.buffer);
+        const reader = self.stream.reader();
+        const bytes_read = try reader.read(&self.buffer);
         const msg = self.buffer[0..bytes_read];
         return std.mem.eql(u8, "+PONG\r\n", msg);
     }
