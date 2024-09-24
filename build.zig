@@ -43,7 +43,7 @@ pub fn build(b: *std.Build) void {
     }
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/test/main.zig"),
+        .root_source_file = b.path("src/test.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -56,4 +56,8 @@ pub fn build(b: *std.Build) void {
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    const client_lib = b.addModule("client", .{ .root_source_file = .{ .cwd_relative = "lib/client/client.zig" } });
+    exe.root_module.addImport("client", client_lib);
+    exe_unit_tests.root_module.addImport("client", client_lib);
 }

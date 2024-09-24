@@ -2,7 +2,7 @@ const std = @import("std");
 const net = std.net;
 
 // Note: This client is not thread-safe
-const Redis = struct {
+pub const Redis = struct {
     stream: net.Stream,
     buffer: [1024]u8,
 
