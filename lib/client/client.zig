@@ -20,7 +20,7 @@ pub const Redis = struct {
 
     pub fn ping(self: *Self) !bool {
         const writer = self.stream.writer();
-        try writer.writeAll("+PING\r\n");
+        try writer.writeAll("*1\r\n$4\r\nPING\r\n");
         const reader = self.stream.reader();
         const bytes_read = try reader.read(&self.buffer);
         const msg = self.buffer[0..bytes_read];
