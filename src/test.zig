@@ -10,9 +10,17 @@ pub fn start_test_server() !void {
     }});
 }
 
-test "test ping pong" {
+test "ping pong" {
     try start_test_server();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     try std.testing.expect(try redis.ping());
+}
+
+test "echo" {
+    try start_test_server();
+    var redis = try client.Redis.connect("127.0.0.1", 6379);
+    defer redis.close();
+    const msg = try redis.send("*2\r\n$4\r\nECHO\r\n$4\r\ntest\r\n");
+    try std.testing.expect(std.mem.eql(u8, "$4\r\ntest\r\n", msg));
 }
