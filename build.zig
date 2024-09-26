@@ -60,4 +60,8 @@ pub fn build(b: *std.Build) void {
     const client_lib = b.addModule("client", .{ .root_source_file = .{ .cwd_relative = "lib/client/client.zig" } });
     exe.root_module.addImport("client", client_lib);
     exe_unit_tests.root_module.addImport("client", client_lib);
+
+    const parser_lib = b.addModule("parser", .{ .root_source_file = .{ .cwd_relative = "lib/parser/parser.zig" } });
+    exe.root_module.addImport("parser", parser_lib);
+    exe_unit_tests.root_module.addImport("parser", parser_lib);
 }
