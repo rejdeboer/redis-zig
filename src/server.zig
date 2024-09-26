@@ -1,5 +1,6 @@
 const std = @import("std");
 const net = std.net;
+const parser = @import("parser");
 
 pub const Settings = struct {
     host: []const u8,
@@ -17,6 +18,7 @@ pub fn start(settings: Settings) !void {
         .reuse_address = true,
     });
     defer listener.deinit();
+    std.log.info("starting server on port: {}", .{settings.port});
 
     while (true) {
         const connection = try listener.accept();
@@ -39,10 +41,36 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
     while (true) {
         const read_bytes = try reader.read(&buffer);
         if (read_bytes == 0) break;
-        // var tokens = std.mem.tokenizeSequence(u8, &buffer, "\r\n");
 
-        std.log.info("Received message: \"{}\"", .{std.zig.fmtEscapes(buffer[0..read_bytes])});
-        try writer.writeAll("+PONG\r\n");
-        std.log.info("Replied with PONG", .{});
+        const message = buffer[0..read_bytes];
+        std.log.info("received message: \"{}\"", .{message});
+        const response = switch (parser.parse(message)) {
+            .ping => |msg| {
+                if (msg != null) {
+                    return '+' ++ msg ++ "\r\n";
+                }
+                return "+PONG\r\n";
+            },
+            .echo => |msg| {
+                return '+' ++ msg ++ "\r\n";
+            },
+            .get => |key| {
+                const value = values.get(key);
+                if (value) {
+                    return '+' ++ value ++ "\r\n";
+                }
+                return "-todo";
+            },
+            .set => |kv| {
+                values.put(kv.key, kv.value);
+                return "+todo";
+            },
+            .err => |err| switch (err) {
+                .Unexpected => "-unexpected command",
+            },
+        };
+
+        try writer.writeAll(response);
+        std.log.info("replied with: {s}", .{response});
     }
 }
