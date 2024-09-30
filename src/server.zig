@@ -43,34 +43,33 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
         if (read_bytes == 0) break;
 
         const message = buffer[0..read_bytes];
-        std.log.info("received message: \"{}\"", .{message});
-        const response = switch (parser.parse(message)) {
+        std.log.info("received message: \"{s}\"", .{message});
+
+        const command = parser.parse(message) catch {
+            try writer.writeAll("-unexpected command");
+            return;
+        };
+        switch (command) {
             .ping => |msg| {
                 if (msg != null) {
-                    return '+' ++ msg ++ "\r\n";
+                    try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ msg.?.len, msg.? });
                 }
-                return "+PONG\r\n";
+                try writer.writeAll("+PONG\r\n");
             },
             .echo => |msg| {
-                return '+' ++ msg ++ "\r\n";
+                try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ msg.len, msg });
             },
             .get => |key| {
                 const value = values.get(key);
-                if (value) {
-                    return '+' ++ value ++ "\r\n";
+                if (value != null) {
+                    try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ value.?.len, value.? });
                 }
-                return "-todo";
+                try writer.writeAll("-todo");
             },
             .set => |kv| {
-                values.put(kv.key, kv.value);
-                return "+todo";
+                try values.put(kv.key, kv.value);
+                try writer.writeAll("-todo");
             },
-            .err => |err| switch (err) {
-                .Unexpected => "-unexpected command",
-            },
-        };
-
-        try writer.writeAll(response);
-        std.log.info("replied with: {s}", .{response});
+        }
     }
 }
