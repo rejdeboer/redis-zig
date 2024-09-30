@@ -29,7 +29,16 @@ pub fn parse(message: []const u8) Command {
     } else if (std.ascii.eqlIgnoreCase("ECHO", command)) {
         try expect_char(tokens.next(), '$');
         return Command{ .echo = tokens.next() };
+    } else if (std.ascii.eqlIgnoreCase("GET", command)) {
+        try expect_char(tokens.next(), '$');
+        return Command{ .get = tokens.next() };
+    } else if (std.ascii.eqlIgnoreCase("SET", command)) {
+        try expect_char(tokens.next(), '$');
+        const key = tokens.next();
+        try expect_char(tokens.next(), '$');
+        return Command{ .set = .{ key, tokens.next() } };
     }
+
     return ParsingError.Unexpected;
 }
 
