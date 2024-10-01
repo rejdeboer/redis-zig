@@ -19,23 +19,6 @@ pub const Redis = struct {
         };
     }
 
-    pub fn ping(self: *Self) !bool {
-        const writer = self.stream.writer();
-        try writer.writeAll("*1\r\n$4\r\nPING\r\n");
-        const response = try self.reader.parse([]const u8);
-        return std.mem.eql(u8, "PONG", response);
-    }
-
-    // pub fn echo(self: *Self, message: []const u8) !bool {}
-    //
-    // pub fn get(self: *Self, comptime T: type, key: []const u8) ?T {
-    //     return undefined;
-    // }
-    //
-    // pub fn set(self: *Self, comptime T: type, key: []const u8, value: T) !void {
-    //     return error.Todo;
-    // }
-
     pub fn send(self: *Self, comptime T: type, command: []const u8) ![]const u8 {
         const writer = self.stream.writer();
         try writer.writeAll(command);

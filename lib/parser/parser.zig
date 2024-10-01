@@ -78,7 +78,7 @@ pub const Parser = struct {
             return ParsingError.Unexpected;
         };
         if (line == null or line.?.len == 0) {
-            std.log.err("reached early EOF", .{});
+            std.log.err("reached unexpected EOF", .{});
             return ParsingError.Unexpected;
         }
         return line.?;

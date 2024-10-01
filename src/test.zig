@@ -14,7 +14,8 @@ test "ping pong" {
     try start_test_server();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
-    try std.testing.expect(try redis.ping());
+    const msg = try redis.send([]const u8, "*1\r\n$4\r\nPING\r\n");
+    try std.testing.expect(std.mem.eql(u8, "PONG", msg));
 }
 
 test "echo" {
