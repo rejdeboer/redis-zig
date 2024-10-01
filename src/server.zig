@@ -45,7 +45,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
         const message = buffer[0..read_bytes];
         std.log.info("received message: \"{s}\"", .{message});
 
-        const command = parser.parse(message) catch {
+        const command = parser.parse_command(message) catch {
             try writer.writeAll("-unexpected command");
             return;
         };

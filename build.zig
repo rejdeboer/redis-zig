@@ -64,4 +64,5 @@ pub fn build(b: *std.Build) void {
     const parser_lib = b.addModule("parser", .{ .root_source_file = .{ .cwd_relative = "lib/parser/parser.zig" } });
     exe.root_module.addImport("parser", parser_lib);
     exe_unit_tests.root_module.addImport("parser", parser_lib);
+    client_lib.addImport("parser", parser_lib);
 }

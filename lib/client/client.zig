@@ -1,10 +1,11 @@
 const std = @import("std");
 const net = std.net;
+const parser = @import("parser");
 
 // Note: This client is not thread-safe
 pub const Redis = struct {
     stream: net.Stream,
-    buffer: [1024]u8,
+    reader: parser.Parser,
 
     const Self = @This();
 
@@ -14,17 +15,15 @@ pub const Redis = struct {
 
         return Self{
             .stream = stream,
-            .buffer = undefined,
+            .reader = parser.Parser.init(&stream.reader()),
         };
     }
 
     pub fn ping(self: *Self) !bool {
         const writer = self.stream.writer();
         try writer.writeAll("*1\r\n$4\r\nPING\r\n");
-        const reader = self.stream.reader();
-        const bytes_read = try reader.read(&self.buffer);
-        const msg = self.buffer[0..bytes_read];
-        return std.mem.eql(u8, "+PONG\r\n", msg);
+        const response = try self.reader.parse([]const u8);
+        return std.mem.eql(u8, "PONG", response);
     }
 
     // pub fn echo(self: *Self, message: []const u8) !bool {}
@@ -37,12 +36,10 @@ pub const Redis = struct {
     //     return error.Todo;
     // }
 
-    pub fn send(self: *Self, command: []const u8) ![]const u8 {
+    pub fn send(self: *Self, comptime T: type, command: []const u8) ![]const u8 {
         const writer = self.stream.writer();
         try writer.writeAll(command);
-        const reader = self.stream.reader();
-        const bytes_read = try reader.read(&self.buffer);
-        return self.buffer[0..bytes_read];
+        return try self.reader.parse(T);
     }
 
     pub fn close(self: Self) void {
