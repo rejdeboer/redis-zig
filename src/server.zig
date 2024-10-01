@@ -30,22 +30,15 @@ pub fn start(settings: Settings) !void {
 fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connection) !void {
     defer connection.stream.close();
 
-    const reader = connection.stream.reader();
+    var reader = parser.Parser.init(&connection.stream.reader());
     const writer = connection.stream.writer();
     std.log.info("accepted new connection", .{});
 
-    var buffer: [1024]u8 = undefined;
     var values = std.StringHashMap([]const u8).init(gpa.*);
     defer values.deinit();
 
     while (true) {
-        const read_bytes = try reader.read(&buffer);
-        if (read_bytes == 0) break;
-
-        const message = buffer[0..read_bytes];
-        std.log.info("received message: \"{s}\"", .{message});
-
-        const command = parser.parse_command(message) catch {
+        const command = reader.parse_command() catch {
             try writer.writeAll("-unexpected command");
             return;
         };

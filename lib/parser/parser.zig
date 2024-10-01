@@ -33,11 +33,41 @@ pub const Parser = struct {
                     else => ParsingError.Unexpected,
                 };
             },
+            .Int => {
+                const line = try self.read_line();
+                return switch (line[0]) {
+                    '*', ':' => std.fmt.parseInt(T, line[1..], 10) catch {
+                        return ParsingError.Unexpected;
+                    },
+                    else => ParsingError.Unexpected,
+                };
+            },
             else => |err_type| {
                 std.log.err("unexpected type: {}", .{err_type});
                 return ParsingError.Unexpected;
             },
         };
+    }
+
+    pub fn parse_command(self: *Self) ParsingError!Command {
+        const command_length = try self.parse(u32);
+        const command = try self.parse([]const u8);
+
+        if (std.ascii.eqlIgnoreCase("PING", command)) {
+            if (command_length > 1) {
+                return Command{ .ping = try self.parse([]const u8) };
+            }
+            return Command{ .ping = null };
+        } else if (std.ascii.eqlIgnoreCase("ECHO", command)) {
+            return Command{ .echo = try self.parse([]const u8) };
+        } else if (std.ascii.eqlIgnoreCase("GET", command)) {
+            return Command{ .get = try self.parse([]const u8) };
+        } else if (std.ascii.eqlIgnoreCase("SET", command)) {
+            const key = try self.parse([]const u8);
+            return Command{ .set = .{ .key = key, .value = try self.parse([]const u8) } };
+        }
+
+        return ParsingError.Unexpected;
     }
 
     fn read_line(self: *Self) ParsingError![]const u8 {
@@ -54,46 +84,3 @@ pub const Parser = struct {
         return line.?;
     }
 };
-
-pub fn parse_command(message: []const u8) ParsingError!Command {
-    var tokens = std.mem.tokenizeSequence(u8, message, "\r\n");
-    const command_length = try parse_list_length(tokens.next().?);
-
-    try expect_char(tokens.next().?, '$');
-    const command = tokens.next().?;
-
-    if (std.ascii.eqlIgnoreCase("PING", command)) {
-        if (command_length > 1) {
-            try expect_char(tokens.next().?, '$');
-            return Command{ .ping = tokens.next().? };
-        }
-        return Command{ .ping = null };
-    } else if (std.ascii.eqlIgnoreCase("ECHO", command)) {
-        try expect_char(tokens.next().?, '$');
-        return Command{ .echo = tokens.next().? };
-    } else if (std.ascii.eqlIgnoreCase("GET", command)) {
-        try expect_char(tokens.next().?, '$');
-        return Command{ .get = tokens.next().? };
-    } else if (std.ascii.eqlIgnoreCase("SET", command)) {
-        try expect_char(tokens.next().?, '$');
-        const key = tokens.next().?;
-        try expect_char(tokens.next().?, '$');
-        return Command{ .set = .{ .key = key, .value = tokens.next().? } };
-    }
-
-    return ParsingError.Unexpected;
-}
-
-fn parse_list_length(line: []const u8) !u32 {
-    try expect_char(line, '*');
-    return std.fmt.parseInt(u32, line[1..], 10) catch {
-        return ParsingError.Unexpected;
-    };
-}
-
-fn expect_char(line: []const u8, char: u8) !void {
-    if (char != line[0]) {
-        std.log.err("parsing error: expected {}, received {}", .{ char, line[0] });
-        return ParsingError.Unexpected;
-    }
-}
