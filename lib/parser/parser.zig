@@ -64,7 +64,10 @@ pub const Parser = struct {
             return Command{ .get = try self.parse([]const u8) };
         } else if (std.ascii.eqlIgnoreCase("SET", command)) {
             const key = try self.parse([]const u8);
-            return Command{ .set = .{ .key = key, .value = try self.parse([]const u8) } };
+            // TODO: Reading value will overwrite key here, woops
+            const value = try self.parse([]const u8);
+            std.log.info("setting key {s} to value {s}", .{ key, value });
+            return Command{ .set = .{ .key = key, .value = value } };
         }
 
         return ParsingError.Unexpected;

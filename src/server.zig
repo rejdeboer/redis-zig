@@ -61,7 +61,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
             },
             .set => |kv| {
                 try values.put(kv.key, kv.value);
-                try writer.writeAll("-todo");
+                try writer.writeAll("+OK");
             },
         }
     }
