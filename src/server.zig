@@ -54,12 +54,11 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
             },
             .get => |key| {
                 std.log.info("getting value for key {s}", .{key});
-                const value = values.get(key);
-                if (value != null) {
-                    try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ value.?.len, value.? });
-                    return;
+                if (values.get(key)) |value| {
+                    try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ value.len, value });
+                } else {
+                    try writer.writeAll("-todo\r\n");
                 }
-                try writer.writeAll("-todo\r\n");
             },
             .set => |kv| {
                 std.log.info("setting key {s} to value {s}", .{ kv.key, kv.value });
