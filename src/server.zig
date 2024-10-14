@@ -53,6 +53,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
                 try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ msg.len, msg });
             },
             .get => |key| {
+                std.log.info("getting value for key {s}", .{key});
                 const value = values.get(key);
                 if (value != null) {
                     try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ value.?.len, value.? });
@@ -61,6 +62,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
                 try writer.writeAll("-todo\r\n");
             },
             .set => |kv| {
+                std.log.info("setting key {s} to value {s}", .{ kv.key, kv.value });
                 try values.put(kv.key, kv.value);
                 try writer.writeAll("+OK\r\n");
             },
