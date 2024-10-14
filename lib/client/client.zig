@@ -15,14 +15,14 @@ pub const Redis = struct {
 
         return Self{
             .stream = stream,
-            .reader = parser.Parser.init(&stream.reader()),
+            .reader = parser.Parser.init(&stream.reader(), null),
         };
     }
 
     pub fn send(self: *Self, comptime T: type, command: []const u8) ![]const u8 {
         const writer = self.stream.writer();
         try writer.writeAll(command);
-        return try self.reader.parse(T);
+        return try self.reader.parse(T, false);
     }
 
     pub fn close(self: Self) void {

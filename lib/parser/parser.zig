@@ -16,25 +16,27 @@ pub const ParsingError = error{Unexpected};
 pub const Parser = struct {
     reader: *const net.Stream.Reader,
     buf: [1024]u8,
+    gpa: ?*const std.mem.Allocator,
 
     const Self = @This();
 
-    pub fn init(reader: *const net.Stream.Reader) Self {
-        return Parser{ .reader = reader, .buf = undefined };
+    // Note: If you intend to parse commands, you should pass an allocator
+    pub fn init(reader: *const net.Stream.Reader, gpa: ?*const std.mem.Allocator) Self {
+        return Parser{ .reader = reader, .buf = undefined, .gpa = gpa };
     }
 
-    pub fn parse(self: *Self, comptime T: type) ParsingError!T {
+    pub fn parse(self: *Self, comptime T: type, should_allocate: bool) ParsingError!T {
         return switch (@typeInfo(T)) {
             .Pointer => {
-                const line = try self.read_line();
+                const line = try self.read_line(false);
                 return switch (line[0]) {
-                    '$' => try self.read_line(),
+                    '$' => try self.read_line(should_allocate),
                     '+' => line[1..],
                     else => ParsingError.Unexpected,
                 };
             },
             .Int => {
-                const line = try self.read_line();
+                const line = try self.read_line(false);
                 return switch (line[0]) {
                     '*', ':' => std.fmt.parseInt(T, line[1..], 10) catch {
                         return ParsingError.Unexpected;
@@ -50,22 +52,21 @@ pub const Parser = struct {
     }
 
     pub fn parse_command(self: *Self) ParsingError!Command {
-        const command_length = try self.parse(u32);
-        const command = try self.parse([]const u8);
+        const command_length = try self.parse(u32, false);
+        const command = try self.parse([]const u8, false);
 
         if (std.ascii.eqlIgnoreCase("PING", command)) {
             if (command_length > 1) {
-                return Command{ .ping = try self.parse([]const u8) };
+                return Command{ .ping = try self.parse([]const u8, false) };
             }
             return Command{ .ping = null };
         } else if (std.ascii.eqlIgnoreCase("ECHO", command)) {
-            return Command{ .echo = try self.parse([]const u8) };
+            return Command{ .echo = try self.parse([]const u8, false) };
         } else if (std.ascii.eqlIgnoreCase("GET", command)) {
-            return Command{ .get = try self.parse([]const u8) };
+            return Command{ .get = try self.parse([]const u8, false) };
         } else if (std.ascii.eqlIgnoreCase("SET", command)) {
-            const key = try self.parse([]const u8);
-            // TODO: Reading value will overwrite key here, woops
-            const value = try self.parse([]const u8);
+            const key = try self.parse([]const u8, true);
+            const value = try self.parse([]const u8, false);
             std.log.info("setting key {s} to value {s}", .{ key, value });
             return Command{ .set = .{ .key = key, .value = value } };
         }
@@ -73,17 +74,18 @@ pub const Parser = struct {
         return ParsingError.Unexpected;
     }
 
-    fn read_line(self: *Self) ParsingError![]const u8 {
-        const line = self.reader.*.readUntilDelimiterOrEof(&self.buf, '\r') catch {
-            return ParsingError.Unexpected;
-        };
-        self.reader.*.skipBytes(1, .{}) catch {
-            return ParsingError.Unexpected;
-        };
-        if (line == null or line.?.len == 0) {
-            std.log.err("reached unexpected EOF", .{});
+    fn read_line(self: *Self, should_allocate: bool) ParsingError![]const u8 {
+        if (if (should_allocate) self.reader.*.readUntilDelimiterOrEofAlloc(self.gpa.?.*, '\r', 4096) else self.reader.*.readUntilDelimiterOrEof(&self.buf, '\r')) |line| {
+            self.reader.*.skipBytes(1, .{}) catch {
+                return ParsingError.Unexpected;
+            };
+            if (line == null or line.?.len == 0) {
+                std.log.err("reached unexpected EOF", .{});
+                return ParsingError.Unexpected;
+            }
+            return line.?;
+        } else |_| {
             return ParsingError.Unexpected;
         }
-        return line.?;
     }
 };

@@ -30,7 +30,7 @@ pub fn start(settings: Settings) !void {
 fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connection) !void {
     defer connection.stream.close();
 
-    var reader = parser.Parser.init(&connection.stream.reader());
+    var reader = parser.Parser.init(&connection.stream.reader(), gpa);
     const writer = connection.stream.writer();
     std.log.info("accepted new connection", .{});
 
@@ -56,12 +56,13 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
                 const value = values.get(key);
                 if (value != null) {
                     try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ value.?.len, value.? });
+                    return;
                 }
-                try writer.writeAll("-todo");
+                try writer.writeAll("-todo\r\n");
             },
             .set => |kv| {
                 try values.put(kv.key, kv.value);
-                try writer.writeAll("+OK");
+                try writer.writeAll("+OK\r\n");
             },
         }
     }
