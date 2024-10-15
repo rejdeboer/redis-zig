@@ -34,7 +34,7 @@ pub const Parser = struct {
 
     const Self = @This();
 
-    // Note: If you intend to parse commands, you should pass an allocator
+    /// Note: If you intend to parse commands, you should pass an allocator
     pub fn init(reader: *const net.Stream.Reader, gpa: ?*const std.mem.Allocator) Self {
         return Parser{ .reader = reader, .buf = undefined, .gpa = gpa };
     }
@@ -45,7 +45,7 @@ pub const Parser = struct {
                 const line = try self.read_line(false);
                 return switch (line[0]) {
                     '$' => try self.read_line(should_allocate),
-                    '+' => line[1..],
+                    '+', '-' => line[1..],
                     else => ParsingError.Unexpected,
                 };
             },
@@ -117,14 +117,17 @@ pub const Parser = struct {
             }
 
             options_count -= 1;
-            const expiry = std.fmt.parseInt(i64, try self.parse([]const u8, false), 10) catch return ParsingError.Unexpected;
             if (std.ascii.eqlIgnoreCase("EX", option)) {
+                const expiry = std.fmt.parseInt(i64, try self.parse([]const u8, false), 10) catch return ParsingError.Unexpected;
                 expiry_ms = std.time.milliTimestamp() + (expiry * 1000);
             } else if (std.ascii.eqlIgnoreCase("PX", option)) {
+                const expiry = std.fmt.parseInt(i64, try self.parse([]const u8, false), 10) catch return ParsingError.Unexpected;
                 expiry_ms = std.time.milliTimestamp() + expiry;
             } else if (std.ascii.eqlIgnoreCase("EXAT", option)) {
+                const expiry = std.fmt.parseInt(i64, try self.parse([]const u8, false), 10) catch return ParsingError.Unexpected;
                 expiry_ms = expiry * 1000;
             } else if (std.ascii.eqlIgnoreCase("PXAT", option)) {
+                const expiry = std.fmt.parseInt(i64, try self.parse([]const u8, false), 10) catch return ParsingError.Unexpected;
                 expiry_ms = expiry;
             }
         }

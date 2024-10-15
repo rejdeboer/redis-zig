@@ -55,7 +55,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
             .get => |key| {
                 std.log.info("getting value for key {s}", .{key});
                 if (values.get(key)) |entry| {
-                    if (entry.expiry_ms != null and entry.expiry_ms.? >= std.time.milliTimestamp()) {
+                    if (entry.expiry_ms != null and entry.expiry_ms.? <= std.time.milliTimestamp()) {
                         _ = values.remove(key);
                         try writer.writeAll("-KEY NOT FOUND\r\n");
                         continue;
