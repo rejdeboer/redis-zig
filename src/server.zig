@@ -39,8 +39,8 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
 
     while (true) {
         const command = reader.parse_command() catch {
-            try writer.writeAll("-unexpected command");
-            return;
+            try writer.writeAll("-UNEXPECTED COMMAND\r\n");
+            break;
         };
         switch (command) {
             .ping => |msg| {
@@ -57,7 +57,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
                 if (values.get(key)) |value| {
                     try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ value.len, value });
                 } else {
-                    try writer.writeAll("-todo\r\n");
+                    try writer.writeAll("-KEY NOT FOUND\r\n");
                 }
             },
             .set => |kv| {
