@@ -1,6 +1,7 @@
 const std = @import("std");
 const net = std.net;
 const parser = @import("parser");
+const mem = @import("memory.zig");
 
 pub const Settings = struct {
     host: []const u8,
@@ -20,22 +21,22 @@ pub fn start(settings: Settings) !void {
     defer listener.deinit();
     std.log.info("starting server on port: {}", .{settings.port});
 
+    var memory = mem.Memory.init(&gpa);
+    defer memory.deinit();
+
     while (true) {
         const connection = try listener.accept();
 
-        _ = try std.Thread.spawn(.{}, handle_client, .{ &gpa, connection });
+        _ = try std.Thread.spawn(.{}, handle_client, .{ &gpa, connection, &memory });
     }
 }
 
-fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connection) !void {
+fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connection, memory: *mem.Memory) !void {
     defer connection.stream.close();
 
     var reader = parser.Parser.init(&connection.stream.reader(), gpa);
     const writer = connection.stream.writer();
     std.log.info("accepted new connection", .{});
-
-    var values = std.StringHashMap(parser.RedisEntry).init(gpa.*);
-    defer values.deinit();
 
     while (true) {
         const command = reader.parse_command() catch {
@@ -54,12 +55,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
             },
             .get => |key| {
                 std.log.info("getting value for key {s}", .{key});
-                if (values.get(key)) |entry| {
-                    if (entry.expiry_ms != null and entry.expiry_ms.? <= std.time.milliTimestamp()) {
-                        _ = values.remove(key);
-                        try writer.writeAll("-KEY NOT FOUND\r\n");
-                        continue;
-                    }
+                if (memory.get(key)) |entry| {
                     switch (entry.value) {
                         .string => |v| try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ v.len, v }),
                         .int => |v| try std.fmt.format(writer, ":{}\r\n", .{v}),
@@ -71,7 +67,11 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
                 }
             },
             .set => |kv| {
-                try values.put(kv.key, kv.entry);
+                memory.put(kv.key, kv.entry) catch {
+                    std.log.err("out of memory", .{});
+                    try writer.writeAll("-SET FAILED\r\n");
+                    continue;
+                };
                 try writer.writeAll("+OK\r\n");
             },
         }
