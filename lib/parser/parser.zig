@@ -52,9 +52,7 @@ pub const Parser = struct {
             .Int => {
                 const line = try self.read_line(false);
                 return switch (line[0]) {
-                    '*', ':' => std.fmt.parseInt(T, line[1..], 10) catch {
-                        return ParsingError.Unexpected;
-                    },
+                    '*', ':' => std.fmt.parseInt(T, line[1..], 10) catch ParsingError.Unexpected,
                     else => ParsingError.Unexpected,
                 };
             },
@@ -64,6 +62,13 @@ pub const Parser = struct {
                     return ParsingError.Unexpected;
                 }
                 return line[1] == 't';
+            },
+            .Float => {
+                const line = try self.read_line(false);
+                if (',' != line[0]) {
+                    return ParsingError.Unexpected;
+                }
+                return std.fmt.parseFloat(T, line[1..]) catch ParsingError.Unexpected;
             },
             else => |err_type| {
                 std.log.err("unexpected type: {}", .{err_type});
@@ -102,6 +107,7 @@ pub const Parser = struct {
             // TODO: Allocate the simple string
             '+' => RedisValue{ .string = line[1..] },
             '#' => RedisValue{ .boolean = line[1] == 't' },
+            ',' => RedisValue{ .float = std.fmt.parseFloat(f32, line[1..]) catch return ParsingError.Unexpected },
             else => |c| {
                 std.log.err("unexpected SET value type: {}", .{c});
                 return ParsingError.Unexpected;

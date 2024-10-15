@@ -60,7 +60,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
                         .string => |v| try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ v.len, v }),
                         .int => |v| try std.fmt.format(writer, ":{}\r\n", .{v}),
                         .boolean => |v| try std.fmt.format(writer, "#{s}\r\n", .{if (v) "t" else "f"}),
-                        .float => |_| try std.fmt.format(writer, "-TODO\r\n", .{}),
+                        .float => |v| try std.fmt.format(writer, ",{d}\r\n", .{v}),
                     }
                 } else {
                     try writer.writeAll("-KEY NOT FOUND\r\n");
