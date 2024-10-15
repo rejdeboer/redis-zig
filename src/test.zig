@@ -46,6 +46,16 @@ test "set get bool" {
     try std.testing.expect(get_response);
 }
 
+test "set get int" {
+    try start_test_server();
+    var redis = try client.Redis.connect("127.0.0.1", 6379);
+    defer redis.close();
+    const set_response = try redis.send([]const u8, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n:42\r\n");
+    try std.testing.expect(std.mem.eql(u8, "OK", set_response));
+    const get_response = try redis.send(i64, "*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n");
+    try std.testing.expect(get_response == 42);
+}
+
 test "set get expired" {
     try start_test_server();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
