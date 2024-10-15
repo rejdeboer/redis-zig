@@ -4,11 +4,25 @@ const net = std.net;
 pub const Command = union(enum) {
     ping: ?[]const u8,
     echo: []const u8,
-    set: struct {
-        key: []const u8,
-        value: []const u8,
-    },
+    set: SetCommand,
     get: []const u8,
+};
+
+pub const RedisValue = union(enum) {
+    string: []const u8,
+    int: i32,
+    float: f32,
+    boolean: bool,
+};
+
+pub const RedisEntry = struct {
+    value: RedisValue,
+    expiry_ms: ?i64,
+};
+
+const SetCommand = struct {
+    key: []const u8,
+    entry: RedisEntry,
 };
 
 pub const ParsingError = error{Unexpected};
@@ -65,12 +79,57 @@ pub const Parser = struct {
         } else if (std.ascii.eqlIgnoreCase("GET", command)) {
             return Command{ .get = try self.parse([]const u8, false) };
         } else if (std.ascii.eqlIgnoreCase("SET", command)) {
-            const key = try self.parse([]const u8, true);
-            const value = try self.parse([]const u8, true);
-            return Command{ .set = .{ .key = key, .value = value } };
+            return Command{ .set = try self.parse_set_command(command_length) };
         }
 
         return ParsingError.Unexpected;
+    }
+
+    fn parse_set_command(self: *Self, command_length: u32) ParsingError!SetCommand {
+        const key = try self.parse([]const u8, true);
+
+        const line = try self.read_line(false);
+        const value = switch (line[0]) {
+            '*', ':' => RedisValue{ .int = std.fmt.parseInt(i32, line[1..], 10) catch return ParsingError.Unexpected },
+            '$' => RedisValue{ .string = try self.read_line(true) },
+            // TODO: Allocate the simple string
+            '+' => RedisValue{ .string = line[1..] },
+            else => |c| {
+                std.log.err("unexpected SET value type: {}", .{c});
+                return ParsingError.Unexpected;
+            },
+        };
+
+        // NOTE: Parse SET options
+        var expiry_ms: ?i64 = null;
+        var options_count = command_length - 3;
+        while (options_count > 0) {
+            const option = try self.parse([]const u8, false);
+            options_count -= 1;
+
+            // TODO: Implement GET, NX and XX here
+            if (std.ascii.eqlIgnoreCase("GET", option)) {
+                continue;
+            } else if (std.ascii.eqlIgnoreCase("XX", option)) {
+                continue;
+            } else if (std.ascii.eqlIgnoreCase("NX", option)) {
+                continue;
+            }
+
+            options_count -= 1;
+            const expiry = std.fmt.parseInt(i64, try self.parse([]const u8, false), 10) catch return ParsingError.Unexpected;
+            if (std.ascii.eqlIgnoreCase("EX", option)) {
+                expiry_ms = std.time.milliTimestamp() + (expiry * 1000);
+            } else if (std.ascii.eqlIgnoreCase("PX", option)) {
+                expiry_ms = std.time.milliTimestamp() + expiry;
+            } else if (std.ascii.eqlIgnoreCase("EXAT", option)) {
+                expiry_ms = expiry * 1000;
+            } else if (std.ascii.eqlIgnoreCase("PXAT", option)) {
+                expiry_ms = expiry;
+            }
+        }
+
+        return SetCommand{ .key = key, .entry = RedisEntry{ .expiry_ms = expiry_ms, .value = value } };
     }
 
     fn read_line(self: *Self, should_allocate: bool) ParsingError![]const u8 {

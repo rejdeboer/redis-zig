@@ -34,7 +34,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
     const writer = connection.stream.writer();
     std.log.info("accepted new connection", .{});
 
-    var values = std.StringHashMap([]const u8).init(gpa.*);
+    var values = std.StringHashMap(parser.RedisEntry).init(gpa.*);
     defer values.deinit();
 
     while (true) {
@@ -54,15 +54,24 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
             },
             .get => |key| {
                 std.log.info("getting value for key {s}", .{key});
-                if (values.get(key)) |value| {
-                    try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ value.len, value });
+                if (values.get(key)) |entry| {
+                    if (entry.expiry_ms != null and entry.expiry_ms.? >= std.time.milliTimestamp()) {
+                        _ = values.remove(key);
+                        try writer.writeAll("-KEY NOT FOUND\r\n");
+                        continue;
+                    }
+                    switch (entry.value) {
+                        .string => |v| try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ v.len, v }),
+                        .int => |v| try std.fmt.format(writer, ":{}\r\n", .{v}),
+                        .boolean => |_| try std.fmt.format(writer, "-TODO\r\n", .{}),
+                        .float => |_| try std.fmt.format(writer, "-TODO\r\n", .{}),
+                    }
                 } else {
                     try writer.writeAll("-KEY NOT FOUND\r\n");
                 }
             },
             .set => |kv| {
-                std.log.info("setting key {s} to value {s}", .{ kv.key, kv.value });
-                try values.put(kv.key, kv.value);
+                try values.put(kv.key, kv.entry);
                 try writer.writeAll("+OK\r\n");
             },
         }
