@@ -19,7 +19,7 @@ pub const Redis = struct {
         };
     }
 
-    pub fn send(self: *Self, comptime T: type, command: []const u8) ![]const u8 {
+    pub fn send(self: *Self, comptime T: type, command: []const u8) !T {
         const writer = self.stream.writer();
         try writer.writeAll(command);
         return try self.reader.parse(T, false);

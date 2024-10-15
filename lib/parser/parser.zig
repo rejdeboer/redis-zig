@@ -58,6 +58,13 @@ pub const Parser = struct {
                     else => ParsingError.Unexpected,
                 };
             },
+            .Bool => {
+                const line = try self.read_line(false);
+                if ('#' != line[0]) {
+                    return ParsingError.Unexpected;
+                }
+                return line[1] == 't';
+            },
             else => |err_type| {
                 std.log.err("unexpected type: {}", .{err_type});
                 return ParsingError.Unexpected;
@@ -94,6 +101,7 @@ pub const Parser = struct {
             '$' => RedisValue{ .string = try self.read_line(true) },
             // TODO: Allocate the simple string
             '+' => RedisValue{ .string = line[1..] },
+            '#' => RedisValue{ .boolean = line[1] == 't' },
             else => |c| {
                 std.log.err("unexpected SET value type: {}", .{c});
                 return ParsingError.Unexpected;

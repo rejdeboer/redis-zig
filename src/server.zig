@@ -59,7 +59,7 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
                     switch (entry.value) {
                         .string => |v| try std.fmt.format(writer, "${}\r\n{s}\r\n", .{ v.len, v }),
                         .int => |v| try std.fmt.format(writer, ":{}\r\n", .{v}),
-                        .boolean => |_| try std.fmt.format(writer, "-TODO\r\n", .{}),
+                        .boolean => |v| try std.fmt.format(writer, "#{s}\r\n", .{if (v) "t" else "f"}),
                         .float => |_| try std.fmt.format(writer, "-TODO\r\n", .{}),
                     }
                 } else {
