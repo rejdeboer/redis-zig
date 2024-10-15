@@ -45,3 +45,13 @@ test "set get expired" {
     const get_response = try redis.send([]const u8, "*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n");
     try std.testing.expect(std.mem.eql(u8, "KEY NOT FOUND", get_response));
 }
+
+test "set get not expired" {
+    try start_test_server();
+    var redis = try client.Redis.connect("127.0.0.1", 6379);
+    defer redis.close();
+    const set_response = try redis.send([]const u8, "*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\nEX\r\n$3\r\n999\r\n");
+    try std.testing.expect(std.mem.eql(u8, "OK", set_response));
+    const get_response = try redis.send([]const u8, "*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n");
+    try std.testing.expect(std.mem.eql(u8, "bar", get_response));
+}
