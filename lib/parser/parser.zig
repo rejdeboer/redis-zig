@@ -104,8 +104,7 @@ pub const Parser = struct {
         const value = switch (line[0]) {
             '*', ':' => RedisValue{ .int = std.fmt.parseInt(i32, line[1..], 10) catch return ParsingError.Unexpected },
             '$' => RedisValue{ .string = try self.read_line(true) },
-            // TODO: Allocate the simple string
-            '+' => RedisValue{ .string = line[1..] },
+            '+' => RedisValue{ .string = std.mem.Allocator.dupe(self.gpa.?.*, u8, line[1..]) catch return ParsingError.Unexpected },
             '#' => RedisValue{ .boolean = line[1] == 't' },
             ',' => RedisValue{ .float = std.fmt.parseFloat(f32, line[1..]) catch return ParsingError.Unexpected },
             else => |c| {
