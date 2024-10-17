@@ -1,14 +1,14 @@
 const std = @import("std");
 
 pub const Settings = struct {
-    port: u32 = 6379,
+    port: u16 = 6379,
     bind: []const u8 = "127.0.0.1",
-    dir: ?[]const u8,
-    dbfilename: ?[]const u8,
+    dir: ?[]const u8 = null,
+    dbfilename: ?[]const u8 = null,
 };
 
-pub fn get_configuration(gpa: *std.mem.Allocator) Settings {
-    const settings = Settings{};
+pub fn get_configuration(gpa: *const std.mem.Allocator) !Settings {
+    var settings: Settings = undefined;
 
     var args = std.process.args();
     _ = args.skip();
@@ -19,27 +19,33 @@ pub fn get_configuration(gpa: *std.mem.Allocator) Settings {
     return settings;
 }
 
-fn read_config_file(settings: *Settings, path: []const u8, gpa: *std.mem.Allocator) !void {
-    var file = try std.fs.openFileAbsolute(path, .{});
+fn read_config_file(settings: *Settings, path: []const u8, gpa: *const std.mem.Allocator) !void {
+    std.log.info("reading config file with path: {s}", .{path});
+    var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
-    const reader = std.io.bufferedReader(file.reader()).reader();
+    var buf_reader = std.io.bufferedReader(file.reader());
+    var reader = buf_reader.reader();
 
-    const buf: [1024]u8 = undefined;
+    var buf: [1024]u8 = undefined;
     while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-        const option_split = std.mem.split(u8, line, " ");
+        var option_split = std.mem.split(u8, line, " ");
         if (option_split.next()) |option| {
-            set_option(settings, option, option_split.rest(), gpa) catch {
+            set_option(settings, option, option_split.rest(), gpa) catch |err| {
                 std.log.err("error parsing configuration option: {s}", .{option});
-                return;
+                return err;
             };
         }
     }
 }
 
-fn set_option(settings: *Settings, option: []const u8, value: []const u8, gpa: *std.mem.Allocator) !void {
+fn set_option(settings: *Settings, option: []const u8, value: []const u8, gpa: *const std.mem.Allocator) !void {
+    if (value.len == 0) {
+        return;
+    }
+
     if (std.mem.eql(u8, option, "port")) {
-        settings.port = try std.fmt.parseInt(u32, value, 10);
+        settings.port = try std.fmt.parseInt(u16, value, 10);
     } else if (std.mem.eql(u8, option, "bind")) {
         settings.bind = try std.mem.Allocator.dupe(gpa.*, u8, value);
     } else if (std.mem.eql(u8, option, "dir")) {

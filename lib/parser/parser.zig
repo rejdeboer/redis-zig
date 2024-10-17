@@ -6,6 +6,7 @@ pub const Command = union(enum) {
     echo: []const u8,
     set: SetCommand,
     get: []const u8,
+    config_get: []const u8,
 };
 
 pub const RedisValue = union(enum) {
@@ -92,6 +93,11 @@ pub const Parser = struct {
             return Command{ .get = try self.parse([]const u8, false) };
         } else if (std.ascii.eqlIgnoreCase("SET", command)) {
             return Command{ .set = try self.parse_set_command(command_length) };
+        } else if (std.ascii.eqlIgnoreCase("CONFIG", command)) {
+            const command_type = try self.parse([]const u8, false);
+            if (std.ascii.eqlIgnoreCase("GET", command_type)) {
+                return Command{ .config_get = try self.parse([]const u8, false) };
+            }
         }
 
         return ParsingError.Unexpected;

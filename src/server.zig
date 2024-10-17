@@ -2,18 +2,10 @@ const std = @import("std");
 const net = std.net;
 const parser = @import("parser");
 const mem = @import("memory.zig");
+const config = @import("configuration.zig");
 
-pub const Settings = struct {
-    host: []const u8,
-    port: u16,
-};
-
-pub fn start(settings: Settings) !void {
-    var gpa_alloc = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa_alloc.deinit() == .ok);
-    const gpa = gpa_alloc.allocator();
-
-    const address = try net.Address.resolveIp(settings.host, settings.port);
+pub fn start(settings: config.Settings, gpa: std.mem.Allocator) !void {
+    const address = try net.Address.resolveIp(settings.bind, settings.port);
 
     var listener = try address.listen(.{
         .reuse_address = true,
@@ -21,7 +13,7 @@ pub fn start(settings: Settings) !void {
     defer listener.deinit();
     std.log.info("starting server on port: {}", .{settings.port});
 
-    var memory = mem.Memory.init(&gpa);
+    var memory = mem.Memory.init(gpa);
     defer memory.deinit();
 
     while (true) {
@@ -73,6 +65,9 @@ fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connectio
                     continue;
                 };
                 try writer.writeAll("+OK\r\n");
+            },
+            .config_get => |_| {
+                try writer.writeAll("-TODO\r\n");
             },
         }
     }

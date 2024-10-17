@@ -2,22 +2,30 @@ const std = @import("std");
 const parser = @import("parser");
 
 pub const Memory = struct {
+    gpa: std.mem.Allocator,
     storage: std.StringHashMap(parser.RedisEntry),
 
     const Self = @This();
 
-    pub fn init(gpa: *const std.mem.Allocator) Self {
-        return Self{ .storage = std.StringHashMap(parser.RedisEntry).init(gpa.*) };
+    pub fn init(gpa: std.mem.Allocator) Self {
+        return Self{ .gpa = gpa, .storage = std.StringHashMap(parser.RedisEntry).init(gpa) };
     }
 
     pub fn deinit(self: *Self) void {
+        var iterator = self.storage.iterator();
+        while (iterator.next()) |entry| {
+            self.gpa.free(entry.key_ptr.*);
+            self.gpa.free(entry.value_ptr.value.string);
+        }
         self.storage.deinit();
     }
 
     pub fn get(self: *Self, key: []const u8) ?parser.RedisEntry {
         if (self.storage.get(key)) |entry| {
             if (entry.expiry_ms != null and entry.expiry_ms.? <= std.time.milliTimestamp()) {
+                self.gpa.free(entry.value.string);
                 _ = self.storage.remove(key);
+                self.gpa.free(self.storage.getKey(key).?);
                 return null;
             }
             return entry;
