@@ -3,6 +3,7 @@ const std = @import("std");
 pub const Settings = struct {
     port: u16 = 6379,
     bind: []const u8 = "127.0.0.1",
+    maxclients: u16 = 10000,
     dir: ?[]const u8 = null,
     dbfilename: ?[]const u8 = null,
 };
@@ -48,6 +49,8 @@ fn set_option(settings: *Settings, option: []const u8, value: []const u8, gpa: *
         settings.port = try std.fmt.parseInt(u16, value, 10);
     } else if (std.mem.eql(u8, option, "bind")) {
         settings.bind = try std.mem.Allocator.dupe(gpa.*, u8, value);
+    } else if (std.mem.eql(u8, option, "maxclients")) {
+        settings.maxclients = try std.fmt.parseInt(u16, value, 10);
     } else if (std.mem.eql(u8, option, "dir")) {
         settings.dir = try std.mem.Allocator.dupe(gpa.*, u8, value);
     } else if (std.mem.eql(u8, option, "dbfilename")) {
