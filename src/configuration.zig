@@ -1,5 +1,7 @@
 const std = @import("std");
 
+pub const MAX_MESSAGE_SIZE: usize = 4096;
+
 pub const Settings = struct {
     port: u16 = 6379,
     bind: []const u8 = "127.0.0.1",
