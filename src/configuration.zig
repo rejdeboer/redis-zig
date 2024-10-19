@@ -4,61 +4,73 @@ const std = @import("std");
 pub const MAX_MESSAGE_SIZE: usize = 4096;
 
 pub const Settings = struct {
+    gpa: std.mem.Allocator,
     port: u16 = 6379,
     bind: []const u8 = "127.0.0.1",
     maxclients: u16 = 10000,
     dir: ?[]const u8 = null,
     dbfilename: ?[]const u8 = null,
-};
 
-pub fn get_configuration(gpa: *const std.mem.Allocator) !Settings {
-    var settings: Settings = undefined;
+    const Self = @This();
 
-    var args = std.process.args();
-    _ = args.skip();
-    if (args.next()) |config_file_path| {
-        try read_config_file(&settings, config_file_path, gpa);
+    pub fn init(gpa: std.mem.Allocator) !Self {
+        var settings = Self{ .gpa = gpa };
+
+        var args = std.process.args();
+        _ = args.skip();
+        if (args.next()) |config_file_path| {
+            try settings.read_config_file(config_file_path);
+        }
+
+        return settings;
     }
 
-    return settings;
-}
-
-fn read_config_file(settings: *Settings, path: []const u8, gpa: *const std.mem.Allocator) !void {
-    std.log.info("reading config file with path: {s}", .{path});
-    var file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
-
-    var buf_reader = std.io.bufferedReader(file.reader());
-    var reader = buf_reader.reader();
-
-    var buf: [1024]u8 = undefined;
-    while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-        var option_split = std.mem.split(u8, line, " ");
-        if (option_split.next()) |option| {
-            set_option(settings, option, option_split.rest(), gpa) catch |err| {
-                std.log.err("error parsing configuration option: {s}", .{option});
-                return err;
-            };
+    pub fn deinit(self: *Self) void {
+        if (self.dir != null) {
+            self.gpa.free(self.dir.?);
+        }
+        if (self.dbfilename != null) {
+            self.gpa.free(self.dbfilename.?);
         }
     }
-}
 
-fn set_option(settings: *Settings, option: []const u8, value: []const u8, gpa: *const std.mem.Allocator) !void {
-    if (value.len == 0) {
-        return;
+    fn read_config_file(self: *Self, path: []const u8) !void {
+        std.log.info("reading config file with path: {s}", .{path});
+        var file = try std.fs.cwd().openFile(path, .{});
+        defer file.close();
+
+        var buf_reader = std.io.bufferedReader(file.reader());
+        var reader = buf_reader.reader();
+
+        var buf: [1024]u8 = undefined;
+        while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+            var option_split = std.mem.split(u8, line, " ");
+            if (option_split.next()) |option| {
+                self.set_option(option, option_split.rest()) catch |err| {
+                    std.log.err("error parsing configuration option: {s}", .{option});
+                    return err;
+                };
+            }
+        }
     }
 
-    if (std.mem.eql(u8, option, "port")) {
-        settings.port = try std.fmt.parseInt(u16, value, 10);
-    } else if (std.mem.eql(u8, option, "bind")) {
-        settings.bind = try std.mem.Allocator.dupe(gpa.*, u8, value);
-    } else if (std.mem.eql(u8, option, "maxclients")) {
-        settings.maxclients = try std.fmt.parseInt(u16, value, 10);
-    } else if (std.mem.eql(u8, option, "dir")) {
-        settings.dir = try std.mem.Allocator.dupe(gpa.*, u8, value);
-    } else if (std.mem.eql(u8, option, "dbfilename")) {
-        settings.dbfilename = try std.mem.Allocator.dupe(gpa.*, u8, value);
-    } else {
-        std.log.warn("unknown configuration option: {s}", .{option});
+    fn set_option(self: *Self, option: []const u8, value: []const u8) !void {
+        if (value.len == 0) {
+            return;
+        }
+
+        if (std.mem.eql(u8, option, "port")) {
+            self.port = try std.fmt.parseInt(u16, value, 10);
+        } else if (std.mem.eql(u8, option, "bind")) {
+            self.bind = try std.mem.Allocator.dupe(self.gpa, u8, value);
+        } else if (std.mem.eql(u8, option, "maxclients")) {
+            self.maxclients = try std.fmt.parseInt(u16, value, 10);
+        } else if (std.mem.eql(u8, option, "dir")) {
+            self.dir = try std.mem.Allocator.dupe(self.gpa, u8, value);
+        } else if (std.mem.eql(u8, option, "dbfilename")) {
+            self.dbfilename = try std.mem.Allocator.dupe(self.gpa, u8, value);
+        } else {
+            std.log.warn("unknown configuration option: {s}", .{option});
+        }
     }
-}
+};
