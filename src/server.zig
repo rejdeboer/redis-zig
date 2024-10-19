@@ -4,131 +4,82 @@ const posix = std.posix;
 const parser = @import("parser");
 const mem = @import("memory.zig");
 const config = @import("configuration.zig");
+const connection = @import("connection.zig");
 
-pub const ConnectionState = union(enum) {
-    state_req,
-    state_res,
-    state_end,
-};
-
-pub const Connection = struct {
-    fd: i64 = -1,
-    state: ConnectionState = .state_req,
-    rbuf_size: usize = 0,
-    /// Read buffer
-    rbuf: [4 + config.MAX_MESSAGE_SIZE]u8,
-    wbuf_size: usize = 0,
-    wbuf_sent: usize = 0,
-    /// Write buffer
-    wbuf: [4 + config.MAX_MESSAGE_SIZE]u8,
+pub const Server = struct {
+    gpa: std.mem.Allocator,
+    settings: config.Settings,
+    memory: mem.Memory,
+    stop: bool = false,
 
     const Self = @This();
 
-    pub fn update(self: *Self) void {
-        switch (self.state) {
-            .state_req => self.handle_request(),
-            .state_end => unreachable,
-        }
+    pub fn init(settings: config.Settings, gpa: std.mem.Allocator) Self {
+        const memory = mem.Memory.init(gpa);
+        return .{ gpa, settings, memory };
     }
 
-    fn handle_request(self: *Self) void {
-        while (true) {
-            std.debug.assert(self.rbuf_size <= self.rbuf.len);
+    pub fn deinit(self: *Self) void {
+        self.memory.deinit();
+    }
 
-            const cap = self.rbuf.len - self.rbuf_size;
-            const bytes_read = posix.read(self.fd, &self.rbuf[self.rbuf_size], cap) catch |err| {
-                switch (err) {
-                    .WouldBlock => return,
-                    else => {
-                        self.state = .state_end;
-                        return;
-                    },
-                }
-            };
+    pub fn start(self: *Self) !void {
+        // Create a non blocking TCP socket
+        const fd = posix.socket(posix.AF.INET, posix.SOCK.STREAM | posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK, 0) catch {
+            return std.log.err("error creating socket", .{});
+        };
 
-            if (bytes_read == 0) {
-                if (self.rbuf_size > 0) {
-                    std.log.err("unexpected EOF");
-                } else {
-                    std.log.info("EOF");
+        std.log.info("starting server on port: {}", .{self.settings.port});
+        const address = try net.Address.resolveIp(self.settings.bind, self.settings.port);
+        var rv = posix.connect(fd, address.any, address.getOsSockLen());
+        if (rv > 0) {
+            std.log.warn("rv > 0, is this ok?");
+        }
+
+        const connections = std.ArrayList(connection.Connection).init(self.gpa);
+        defer connections.deinit();
+        var poll_args = std.ArrayList(posix.pollfd).init(self.gpa);
+        defer poll_args.deinit();
+        while (!self.stop) {
+            poll_args.clearAndFree();
+            try poll_args.append(.{ fd, posix.POLL.IN, 0 });
+
+            for (connections.items) |conn| {
+                if (conn == undefined) {
+                    continue;
                 }
-                self.state = .state_end;
-                return;
+                const p_byte = if (conn.state == .state_req) posix.POLL.IN else posix.POLL.OUT;
+                poll_args.append(.{ conn.fd, p_byte | posix.POLL.ERR, 0 });
             }
 
-            self.rbuf_size += bytes_read;
+            rv = posix.poll(poll_args.items.ptr, poll_args.capacity, 1000);
+            if (rv < 0) {
+                std.log.warn("rv < 0 in event loop, is this ok?");
+            }
+
+            // Process active connections
+            for (poll_args.items[1..]) |arg| {
+                if (arg.revents > 0) {
+                    const conn = connections.items[arg.fd];
+                    conn.update();
+                    if (conn.state == .state_end) {
+                        connections.items[conn.fd] = undefined;
+                        posix.close(conn.fd);
+                    }
+                }
+            }
+
+            // Check if listener is active
+            if (poll_args.items[0].revents > 0) {}
         }
     }
 };
 
-pub fn start(settings: config.Settings, gpa: std.mem.Allocator) !void {
-    // Create a non blocking TCP socket
-    const fd = posix.socket(posix.AF.INET, posix.SOCK.STREAM | posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK, 0) catch {
-        return std.log.err("error creating socket", .{});
-    };
+fn handle_client(gpa: *const std.mem.Allocator, conn: net.Server.Connection, memory: *mem.Memory) !void {
+    defer conn.stream.close();
 
-    const address = try net.Address.resolveIp(settings.bind, settings.port);
-    var rv = posix.connect(fd, address.any, address.getOsSockLen());
-    if (rv > 0) {
-        std.log.warn("rv > 0, is this ok?");
-    }
-
-    const connections = std.ArrayList(Connection).init(gpa);
-    var poll_args = std.ArrayList(posix.pollfd).init(gpa);
-    while (true) {
-        poll_args.clearAndFree();
-        try poll_args.append(.{
-            .fd = fd,
-            .events = posix.POLL.IN,
-            .revents = 0,
-        });
-
-        for (connections.items) |conn| {
-            if (conn == undefined) {
-                continue;
-            }
-            poll_args.append(.{
-                .fd = conn.fd,
-                .events = if (conn.state == .state_req) posix.POLL.IN | posix.POLL.ERR else posix.POLL.IN | posix.POLL.ERR,
-                .revents = 0,
-            });
-        }
-
-        rv = posix.poll(poll_args.items.ptr, poll_args.capacity, 1000);
-        if (rv < 0) {
-            std.log.warn("rv < 0 in event loop, is this ok?");
-        }
-
-        for (poll_args.items[1..]) |arg| {
-            if (arg.revents > 0) {
-                _ = connections.items[arg.fd];
-            }
-        }
-    }
-
-    var listener = try address.listen(.{
-        .reuse_address = true,
-        .force_nonblocking = true,
-    });
-
-    defer listener.deinit();
-    std.log.info("starting server on port: {}", .{settings.port});
-
-    var memory = mem.Memory.init(gpa);
-    defer memory.deinit();
-
-    while (true) {
-        const connection = try listener.accept();
-
-        _ = try std.Thread.spawn(.{}, handle_client, .{ &gpa, connection, &memory });
-    }
-}
-
-fn handle_client(gpa: *const std.mem.Allocator, connection: net.Server.Connection, memory: *mem.Memory) !void {
-    defer connection.stream.close();
-
-    var reader = parser.Parser.init(&connection.stream.reader(), gpa);
-    const writer = connection.stream.writer();
+    var reader = parser.Parser.init(&conn.stream.reader(), gpa);
+    const writer = conn.stream.writer();
     std.log.info("accepted new connection", .{});
 
     while (true) {
