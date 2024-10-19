@@ -29,7 +29,7 @@ const SetCommand = struct {
 pub const ParsingError = error{Unexpected};
 
 pub const Parser = struct {
-    iterator: std.mem.SplitIterator(u8, .any),
+    iterator: std.mem.SplitIterator(u8, .sequence),
     gpa: ?*const std.mem.Allocator,
 
     const Self = @This();

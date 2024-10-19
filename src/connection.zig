@@ -2,6 +2,7 @@ const std = @import("std");
 const posix = std.posix;
 const config = @import("configuration.zig");
 const mem = @import("memory.zig");
+const parsing = @import("parser");
 
 const ConnectionState = union(enum) {
     state_req,
@@ -55,5 +56,54 @@ pub const Connection = struct {
             };
             self.rbuf_size += bytes_read;
         }
+    }
+
+    fn handle_command(self: *Self) !void {
+        defer self.rbuf_size = 0;
+        const parser = parsing.Parser.init(self.rbuf, &self.gpa);
+
+        const command = parser.parse_command() catch {
+            return self.set_response("-UNEXPECTED COMMAND", .{});
+        };
+        switch (command) {
+            .ping => |msg| {
+                if (msg != null) {
+                    return self.set_response("${}\r\n{s}\r\n", .{ msg.?.len, msg.? });
+                }
+                self.set_response("+PONG\r\n", .{});
+            },
+            .echo => |msg| {
+                self.set_response("${}\r\n{s}\r\n", .{ msg.len, msg });
+            },
+            .get => |key| {
+                std.log.info("getting value for key {s}", .{key});
+                if (self.memory.get(key)) |entry| {
+                    switch (entry.value) {
+                        .string => |v| self.set_response("${}\r\n{s}\r\n", .{ v.len, v }),
+                        .int => |v| self.set_response(":{}\r\n", .{v}),
+                        .boolean => |v| self.set_response("#{s}\r\n", .{if (v) "t" else "f"}),
+                        .float => |v| self.set_response(",{d}\r\n", .{v}),
+                    }
+                } else {
+                    self.set_response("-KEY NOT FOUND\r\n", .{});
+                }
+            },
+            .set => |kv| {
+                self.memory.put(kv.key, kv.entry) catch {
+                    std.log.err("out of memory", .{});
+                    return self.set_response("-SET FAILED\r\n", .{});
+                };
+                self.set_response("+OK\r\n", .{});
+            },
+            .config_get => |_| {
+                self.set_response("-TODO\r\n", .{});
+            },
+        }
+    }
+
+    fn set_response(self: *Self, format: []const u8, args: anytype) void {
+        const slice = std.fmt.bufPrint(&self.w_buf, format, args) catch unreachable;
+        self.wbuf_size = slice.len;
+        self.state = .state_res;
     }
 };
