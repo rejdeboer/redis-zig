@@ -26,7 +26,7 @@ const SetCommand = struct {
     entry: RedisEntry,
 };
 
-pub const ParsingError = error{Unexpected};
+pub const ParsingError = error{ Unexpected, EOF };
 
 pub const Parser = struct {
     iterator: std.mem.SplitIterator(u8, .sequence),
@@ -156,16 +156,14 @@ pub const Parser = struct {
     fn read_line(self: *Self, should_allocate: bool) ParsingError![]const u8 {
         if (self.iterator.next()) |line| {
             if (line.len == 0) {
-                std.log.err("reached unexpected EOF, length of line is 0", .{});
-                return ParsingError.Unexpected;
+                return ParsingError.EOF;
             }
             if (should_allocate) {
                 return self.gpa.?.dupe(u8, line) catch return ParsingError.Unexpected;
             }
             return line;
         } else {
-            std.log.err("reached unexpected EOF, ran out of lines", .{});
-            return ParsingError.Unexpected;
+            return ParsingError.EOF;
         }
     }
 };

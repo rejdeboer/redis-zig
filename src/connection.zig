@@ -24,13 +24,15 @@ pub const Connection = struct {
 
     const Self = @This();
 
-    pub fn init(listener_fd: i32, memory: *mem.Memory, gpa: std.mem.Allocator) !*Self {
+    pub fn init(listener_fd: i32, memory: *mem.Memory, gpa: std.mem.Allocator) !Self {
         const conn_fd = try posix.accept(listener_fd, null, null, posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
         const conn = try gpa.create(Connection);
         conn.fd = conn_fd;
-        std.log.info("ETETE {}", .{conn.fd});
         conn.memory = memory;
-        return conn;
+        conn.rbuf_size = 0;
+        conn.wbuf_size = 0;
+        conn.state = .state_req;
+        return conn.*;
     }
 
     pub fn deinit(self: *Self) void {
@@ -42,31 +44,33 @@ pub const Connection = struct {
     pub fn update(self: *Self) !void {
         switch (self.state) {
             .state_req => try self.handle_read(),
-            .state_res => std.log.info("NICE", .{}),
+            .state_res => try self.handle_write(),
         }
     }
 
     fn handle_read(self: *Self) !void {
-        var bytes_read: usize = 1;
-        while (bytes_read != 0 and self.rbuf_size < self.rbuf.len) {
-            bytes_read = posix.read(self.fd, self.rbuf[self.rbuf_size..]) catch |err| {
-                switch (err) {
-                    posix.ReadError.WouldBlock => return,
-                    else => return err,
-                }
+        var bytes_read: usize = 0;
+        while (self.rbuf_size < self.rbuf.len) {
+            bytes_read = posix.read(self.fd, self.rbuf[self.rbuf_size..]) catch |err| switch (err) {
+                posix.ReadError.WouldBlock => return self.handle_command(),
+                else => return err,
             };
             self.rbuf_size += bytes_read;
         }
         std.debug.assert(self.rbuf_size <= self.rbuf.len);
-        try self.handle_command();
+        self.handle_command();
     }
 
-    fn handle_command(self: *Self) !void {
-        defer self.rbuf_size = 0;
+    pub fn handle_write(self: *Self) !void {}
+
+    fn handle_command(self: *Self) void {
+        std.log.info("HUH", .{});
         var parser = parsing.Parser.init(&self.rbuf, &self.gpa);
 
-        const command = parser.parse_command() catch {
-            return self.set_response("-UNEXPECTED COMMAND", .{});
+        const command = parser.parse_command() catch |err| switch (err) {
+            error.Unexpected => return self.set_response("-UNEXPECTED COMMAND", .{}),
+            // Not yet finished reading
+            error.EOF => return,
         };
         switch (command) {
             .ping => |msg| {
@@ -107,6 +111,8 @@ pub const Connection = struct {
     fn set_response(self: *Self, comptime format: []const u8, args: anytype) void {
         const slice = std.fmt.bufPrint(&self.wbuf, format, args) catch unreachable;
         self.wbuf_size = slice.len;
+        self.rbuf_size = 0;
         self.state = .state_res;
+        self.handle_write() catch unreachable;
     }
 };

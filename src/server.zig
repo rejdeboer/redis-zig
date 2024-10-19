@@ -40,23 +40,18 @@ pub const Server = struct {
         // Set file descriptor to non-blocking
         _ = try posix.fcntl(fd, posix.F.SETFL, try posix.fcntl(fd, posix.F.GETFL, 0) | posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
 
-        // var connections = std.AutoHashMap(c_int, *connection.Connection);
-        var connections = std.ArrayList(*connection.Connection).init(self.gpa);
+        var connections = std.AutoHashMap(c_int, connection.Connection).init(self.gpa);
         defer connections.deinit();
         var poll_args = std.ArrayList(posix.pollfd).init(self.gpa);
         defer poll_args.deinit();
         while (!self.stop) {
-            std.log.info("LOOP: {}", .{fd});
+            std.log.info("LOOPING", .{});
             poll_args.clearAndFree();
             try poll_args.append(posix.pollfd{ .fd = fd, .events = posix.POLL.IN, .revents = 0 });
 
-            for (connections.items) |conn| {
-                std.log.info("HHHHH", .{});
-                if (conn == undefined) {
-                    continue;
-                }
-                std.log.info("HEY {}", .{conn.fd});
-                const p_byte: i16 = if (conn.state == .state_req) posix.POLL.IN else posix.POLL.OUT;
+            var iterator = connections.valueIterator();
+            while (iterator.next()) |conn| {
+                const p_byte: u8 = if (conn.state == .state_req) posix.POLL.IN else posix.POLL.OUT;
                 try poll_args.append(posix.pollfd{ .fd = conn.fd, .events = p_byte | posix.POLL.ERR, .revents = 0 });
             }
 
@@ -65,9 +60,9 @@ pub const Server = struct {
             // Process active connections
             for (poll_args.items[1..]) |arg| {
                 if (arg.revents > 0) {
-                    const conn = connections.items[@intCast(arg.fd)];
+                    var conn = connections.get(arg.fd).?;
                     conn.update() catch {
-                        connections.items[@intCast(conn.fd)] = undefined;
+                        _ = connections.remove(arg.fd);
                         conn.deinit();
                     };
                 }
@@ -76,10 +71,7 @@ pub const Server = struct {
             // Check if listener is active and accept new connection
             if (poll_args.items[0].revents > 0) {
                 const conn = try connection.Connection.init(fd, &self.memory, self.gpa);
-                if (connections.capacity < conn.fd) {
-                    try connections.resize(@intCast(conn.fd + 1));
-                    connections.items[@intCast(conn.fd)] = conn;
-                }
+                try connections.put(conn.fd, conn);
             }
         }
     }
