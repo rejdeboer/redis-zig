@@ -61,15 +61,14 @@ pub const Server = struct {
             for (poll_args.items[1..]) |arg| {
                 if (arg.revents > 0) {
                     const conn = connections.items[arg.fd];
-                    conn.update();
-                    if (conn.state == .state_end) {
+                    conn.update() catch {
                         connections.items[conn.fd] = undefined;
-                        posix.close(conn.fd);
-                    }
+                        conn.deinit();
+                    };
                 }
             }
 
-            // Check if listener is active
+            // Check if listener is active and accept new connection
             if (poll_args.items[0].revents > 0) {
                 const conn = try connection.Connection.init(fd, self.gpa);
                 if (connections.capacity < conn.fd) {
