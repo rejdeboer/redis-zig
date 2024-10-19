@@ -9,6 +9,7 @@ const ConnectionState = union(enum) {
 };
 
 pub const Connection = struct {
+    gpa: std.mem.Allocator,
     fd: i64 = -1,
     state: ConnectionState = .state_req,
     rbuf_size: usize = 0,
@@ -20,6 +21,18 @@ pub const Connection = struct {
     wbuf: [config.MAX_MESSAGE_SIZE]u8,
 
     const Self = @This();
+
+    pub fn init(listener_fd: i64, gpa: std.mem.Allocator) !*Self {
+        const conn_fd = try posix.accept(listener_fd, null, null, posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
+        const conn = try gpa.create(Connection);
+        conn.fd = conn_fd;
+        return conn;
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.gpa.free(self.rbuf);
+        self.gpa.free(self.wbuf);
+    }
 
     pub fn update(self: *Self) void {
         switch (self.state) {

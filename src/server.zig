@@ -36,7 +36,7 @@ pub const Server = struct {
             std.log.warn("rv > 0, is this ok?");
         }
 
-        const connections = std.ArrayList(connection.Connection).init(self.gpa);
+        const connections = std.ArrayList(*connection.Connection).init(self.gpa);
         defer connections.deinit();
         var poll_args = std.ArrayList(posix.pollfd).init(self.gpa);
         defer poll_args.deinit();
@@ -52,7 +52,7 @@ pub const Server = struct {
                 poll_args.append(.{ conn.fd, p_byte | posix.POLL.ERR, 0 });
             }
 
-            rv = posix.poll(poll_args.items.ptr, poll_args.capacity, 1000);
+            rv = posix.poll(poll_args.items, poll_args.capacity, 1000);
             if (rv < 0) {
                 std.log.warn("rv < 0 in event loop, is this ok?");
             }
@@ -70,7 +70,13 @@ pub const Server = struct {
             }
 
             // Check if listener is active
-            if (poll_args.items[0].revents > 0) {}
+            if (poll_args.items[0].revents > 0) {
+                const conn = try connection.Connection.init(fd, self.gpa);
+                if (connections.capacity < conn.fd) {
+                    try connections.resize(conn.fd + 1);
+                    connections[conn.fd] = conn;
+                }
+            }
         }
     }
 };
