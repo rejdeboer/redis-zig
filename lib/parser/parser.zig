@@ -29,14 +29,16 @@ const SetCommand = struct {
 pub const ParsingError = error{ Unexpected, EOF };
 
 pub const Parser = struct {
-    iterator: std.mem.SplitIterator(u8, .sequence),
+    buf: []const u8,
+    index: usize,
+    length: usize,
     gpa: ?*const std.mem.Allocator,
 
     const Self = @This();
 
     /// Note: If you intend to parse commands, you should pass an allocator
-    pub fn init(buf: []const u8, gpa: ?*const std.mem.Allocator) Self {
-        return Self{ .iterator = std.mem.splitSequence(u8, buf, "\r\n"), .gpa = gpa };
+    pub fn init(buf: []const u8, length: usize, gpa: ?*const std.mem.Allocator) Self {
+        return Self{ .buf = buf, .index = 0, .length = length, .gpa = gpa };
     }
 
     pub fn parse(self: *Self, comptime T: type, should_allocate: bool) ParsingError!T {
@@ -82,6 +84,7 @@ pub const Parser = struct {
         const command = try self.parse([]const u8, false);
 
         if (std.ascii.eqlIgnoreCase("PING", command)) {
+            std.log.info("PING", .{});
             if (command_length > 1) {
                 return Command{ .ping = try self.parse([]const u8, false) };
             }
@@ -154,16 +157,23 @@ pub const Parser = struct {
     }
 
     fn read_line(self: *Self, should_allocate: bool) ParsingError![]const u8 {
-        if (self.iterator.next()) |line| {
-            if (line.len == 0) {
-                return ParsingError.EOF;
-            }
-            if (should_allocate) {
-                return self.gpa.?.dupe(u8, line) catch return ParsingError.Unexpected;
-            }
-            return line;
-        } else {
+        const start = self.index;
+        while (self.index < self.length and self.buf[self.index] != '\r') {
+            self.index += 1;
+        }
+        if (self.index >= self.length) {
+            std.log.err("WHY", .{});
             return ParsingError.EOF;
         }
+
+        const line = self.buf[start..self.index];
+
+        // Skip the \r\n
+        self.index += 2;
+
+        if (should_allocate) {
+            return self.gpa.?.dupe(u8, line) catch return ParsingError.Unexpected;
+        }
+        return line;
     }
 };

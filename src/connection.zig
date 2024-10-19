@@ -31,6 +31,7 @@ pub const Connection = struct {
         conn.memory = memory;
         conn.rbuf_size = 0;
         conn.wbuf_size = 0;
+        conn.wbuf_sent = 0;
         conn.state = .state_req;
         return conn.*;
     }
@@ -61,11 +62,23 @@ pub const Connection = struct {
         self.handle_command();
     }
 
-    pub fn handle_write(self: *Self) !void {}
+    pub fn handle_write(self: *Self) !void {
+        std.log.info("WRITING", .{});
+        while (self.wbuf_sent < self.wbuf_size) {
+            std.log.info("WRITINGggg", .{});
+            self.wbuf_sent += posix.write(self.fd, self.wbuf[self.wbuf_sent..]) catch |err| switch (err) {
+                posix.WriteError.WouldBlock => return,
+                else => return err,
+            };
+        }
+        std.log.info("WROTE", .{});
+        self.wbuf_size = 0;
+        self.wbuf_sent = 0;
+        self.state = .state_req;
+    }
 
     fn handle_command(self: *Self) void {
-        std.log.info("HUH", .{});
-        var parser = parsing.Parser.init(&self.rbuf, &self.gpa);
+        var parser = parsing.Parser.init(&self.rbuf, self.rbuf_size, &self.gpa);
 
         const command = parser.parse_command() catch |err| switch (err) {
             error.Unexpected => return self.set_response("-UNEXPECTED COMMAND", .{}),
