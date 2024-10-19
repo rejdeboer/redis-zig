@@ -36,7 +36,7 @@ pub const Parser = struct {
 
     /// Note: If you intend to parse commands, you should pass an allocator
     pub fn init(buf: []const u8, gpa: ?*const std.mem.Allocator) Self {
-        return .{ std.mem.splitSequence(u8, buf, "\r\n"), gpa };
+        return Self{ .iterator = std.mem.splitSequence(u8, buf, "\r\n"), .gpa = gpa };
     }
 
     pub fn parse(self: *Self, comptime T: type, should_allocate: bool) ParsingError!T {
@@ -155,12 +155,12 @@ pub const Parser = struct {
 
     fn read_line(self: *Self, should_allocate: bool) ParsingError![]const u8 {
         if (self.iterator.next()) |line| {
-            if (should_allocate) {
-                self.gpa.?.dupe(u8, line);
-            }
             if (line.len == 0) {
                 std.log.err("reached unexpected EOF, length of line is 0", .{});
                 return ParsingError.Unexpected;
+            }
+            if (should_allocate) {
+                return self.gpa.?.dupe(u8, line) catch return ParsingError.Unexpected;
             }
             return line;
         } else {

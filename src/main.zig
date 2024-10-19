@@ -8,5 +8,6 @@ pub fn main() !void {
     const gpa = gpa_alloc.allocator();
 
     const settings = try configuration.get_configuration(&gpa);
-    try server.start(settings, gpa);
+    var s = server.Server.init(settings, gpa);
+    try s.start();
 }
