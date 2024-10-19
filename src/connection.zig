@@ -63,15 +63,12 @@ pub const Connection = struct {
     }
 
     pub fn handle_write(self: *Self) !void {
-        std.log.info("WRITING", .{});
         while (self.wbuf_sent < self.wbuf_size) {
-            std.log.info("WRITINGggg", .{});
             self.wbuf_sent += posix.write(self.fd, self.wbuf[self.wbuf_sent..]) catch |err| switch (err) {
                 posix.WriteError.WouldBlock => return,
                 else => return err,
             };
         }
-        std.log.info("WROTE", .{});
         self.wbuf_size = 0;
         self.wbuf_sent = 0;
         self.state = .state_req;

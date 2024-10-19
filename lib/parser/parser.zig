@@ -84,7 +84,6 @@ pub const Parser = struct {
         const command = try self.parse([]const u8, false);
 
         if (std.ascii.eqlIgnoreCase("PING", command)) {
-            std.log.info("PING", .{});
             if (command_length > 1) {
                 return Command{ .ping = try self.parse([]const u8, false) };
             }
