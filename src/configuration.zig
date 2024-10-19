@@ -13,16 +13,8 @@ pub const Settings = struct {
 
     const Self = @This();
 
-    pub fn init(gpa: std.mem.Allocator) !Self {
-        var settings = Self{ .gpa = gpa };
-
-        var args = std.process.args();
-        _ = args.skip();
-        if (args.next()) |config_file_path| {
-            try settings.read_config_file(config_file_path);
-        }
-
-        return settings;
+    pub fn init(gpa: std.mem.Allocator) Self {
+        return Self{ .gpa = gpa };
     }
 
     pub fn deinit(self: *Self) void {
@@ -34,9 +26,17 @@ pub const Settings = struct {
         }
     }
 
-    fn read_config_file(self: *Self, path: []const u8) !void {
-        std.log.info("reading config file with path: {s}", .{path});
-        var file = try std.fs.cwd().openFile(path, .{});
+    pub fn read_config_file(self: *Self) !void {
+        var args = std.process.args();
+        _ = args.skip();
+
+        const path = args.next();
+        if (path == null) {
+            return;
+        }
+
+        std.log.info("reading config file with path: {s}", .{path.?});
+        var file = try std.fs.cwd().openFile(path.?, .{});
         defer file.close();
 
         var buf_reader = std.io.bufferedReader(file.reader());

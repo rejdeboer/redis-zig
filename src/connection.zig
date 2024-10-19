@@ -28,6 +28,7 @@ pub const Connection = struct {
         const conn_fd = try posix.accept(listener_fd, null, null, posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
         const conn = try gpa.create(Connection);
         conn.fd = conn_fd;
+        std.log.info("ETETE {}", .{conn.fd});
         conn.memory = memory;
         return conn;
     }

@@ -25,34 +25,42 @@ pub const Server = struct {
 
     pub fn start(self: *Self) !void {
         // Create a non blocking TCP socket
-        const fd = posix.socket(posix.AF.INET, posix.SOCK.STREAM | posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK, 0) catch {
+        const fd = posix.socket(posix.AF.INET, posix.SOCK.STREAM, 0) catch {
             return std.log.err("error creating socket", .{});
         };
 
+        // Enable REUSE_ADDR
+        try posix.setsockopt(fd, posix.SOL.SOCKET, posix.SO.REUSEADDR, &std.mem.toBytes(@as(c_int, 1)));
+
         std.log.info("starting server on port: {}", .{self.settings.port});
         const address = try net.Address.resolveIp(self.settings.bind, self.settings.port);
-        try posix.connect(fd, &address.any, address.getOsSockLen());
+        try posix.bind(fd, &address.any, address.getOsSockLen());
+        try posix.listen(fd, 128);
 
+        // Set file descriptor to non-blocking
+        _ = try posix.fcntl(fd, posix.F.SETFL, try posix.fcntl(fd, posix.F.GETFL, 0) | posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
+
+        // var connections = std.AutoHashMap(c_int, *connection.Connection);
         var connections = std.ArrayList(*connection.Connection).init(self.gpa);
         defer connections.deinit();
         var poll_args = std.ArrayList(posix.pollfd).init(self.gpa);
         defer poll_args.deinit();
         while (!self.stop) {
+            std.log.info("LOOP: {}", .{fd});
             poll_args.clearAndFree();
             try poll_args.append(posix.pollfd{ .fd = fd, .events = posix.POLL.IN, .revents = 0 });
 
             for (connections.items) |conn| {
+                std.log.info("HHHHH", .{});
                 if (conn == undefined) {
                     continue;
                 }
-                const p_byte: u8 = if (conn.state == .state_req) posix.POLL.IN else posix.POLL.OUT;
+                std.log.info("HEY {}", .{conn.fd});
+                const p_byte: i16 = if (conn.state == .state_req) posix.POLL.IN else posix.POLL.OUT;
                 try poll_args.append(posix.pollfd{ .fd = conn.fd, .events = p_byte | posix.POLL.ERR, .revents = 0 });
             }
 
-            const rv = try posix.poll(poll_args.items, 1000);
-            if (rv < 0) {
-                std.log.warn("rv < 0 in event loop, is this ok?");
-            }
+            _ = try posix.poll(poll_args.items, 1000);
 
             // Process active connections
             for (poll_args.items[1..]) |arg| {
