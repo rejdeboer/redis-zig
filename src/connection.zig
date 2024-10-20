@@ -2,7 +2,7 @@ const std = @import("std");
 const posix = std.posix;
 const config = @import("configuration.zig");
 const mem = @import("memory.zig");
-const parsing = @import("parser");
+const parsing = @import("parser.zig");
 
 const ConnectionState = union(enum) {
     state_req,
@@ -66,7 +66,7 @@ pub const Connection = struct {
     }
 
     fn handle_command(self: *Self) void {
-        var parser = parsing.Parser.init(&self.rbuf, self.rbuf_size, &self.gpa);
+        var parser = parsing.Parser.init(&self.rbuf, self.rbuf_size, self.gpa);
 
         const command = parser.parse_command() catch |err| switch (err) {
             error.Unexpected => return self.set_response("-UNEXPECTED COMMAND", .{}),
@@ -117,3 +117,7 @@ pub const Connection = struct {
         self.handle_write() catch unreachable;
     }
 };
+
+test {
+    _ = parsing;
+}

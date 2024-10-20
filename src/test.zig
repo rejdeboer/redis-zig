@@ -1,7 +1,7 @@
 const std = @import("std");
 const Server = @import("server.zig").Server;
 const config = @import("configuration.zig");
-const client = @import("client");
+const client = @import("client.zig");
 
 const LOCALHOST: []const u8 = "127.0.0.1";
 

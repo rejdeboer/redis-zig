@@ -1,6 +1,6 @@
 const std = @import("std");
 const net = std.net;
-const parser = @import("parser");
+const parser = @import("parser.zig");
 
 /// Note: This client is not thread-safe
 pub const Redis = struct {

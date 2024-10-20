@@ -31,12 +31,12 @@ pub const Parser = struct {
     buf: []const u8,
     index: usize,
     length: usize,
-    gpa: ?*const std.mem.Allocator,
+    gpa: ?std.mem.Allocator,
 
     const Self = @This();
 
     /// Note: If you intend to parse commands, you should pass an allocator
-    pub fn init(buf: []const u8, length: usize, gpa: ?*const std.mem.Allocator) Self {
+    pub fn init(buf: []const u8, length: usize, gpa: ?std.mem.Allocator) Self {
         return Self{ .buf = buf, .index = 0, .length = length, .gpa = gpa };
     }
 
@@ -110,7 +110,7 @@ pub const Parser = struct {
         const value = switch (line[0]) {
             '*', ':' => RedisValue{ .int = std.fmt.parseInt(i32, line[1..], 10) catch return ParsingError.Unexpected },
             '$' => RedisValue{ .string = try self.read_line(true) },
-            '+' => RedisValue{ .string = std.mem.Allocator.dupe(self.gpa.?.*, u8, line[1..]) catch return ParsingError.Unexpected },
+            '+' => RedisValue{ .string = std.mem.Allocator.dupe(self.gpa.?, u8, line[1..]) catch return ParsingError.Unexpected },
             '#' => RedisValue{ .boolean = line[1] == 't' },
             ',' => RedisValue{ .float = std.fmt.parseFloat(f32, line[1..]) catch return ParsingError.Unexpected },
             else => |c| {
@@ -174,3 +174,8 @@ pub const Parser = struct {
         return line;
     }
 };
+
+test "integer" {
+    var parser = Parser.init(":42\r\n", 5, std.testing.allocator);
+    try std.testing.expect(42 == try parser.parse(u32, false));
+}

@@ -1,5 +1,5 @@
 const std = @import("std");
-const parser = @import("parser");
+const parser = @import("parser.zig");
 
 pub const Memory = struct {
     gpa: std.mem.Allocator,

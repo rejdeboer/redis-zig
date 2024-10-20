@@ -13,3 +13,7 @@ pub fn main() !void {
     var s = try server.Server.init(settings, gpa);
     try s.run();
 }
+
+test {
+    std.testing.refAllDecls(@This());
+}

@@ -101,3 +101,7 @@ pub const Server = struct {
         std.log.info("server has been stopped", .{});
     }
 };
+
+test {
+    _ = connection;
+}

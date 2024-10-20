@@ -42,27 +42,26 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
-    const exe_unit_tests = b.addTest(.{
+    const exe_integration_tests = b.addTest(.{
         .root_source_file = b.path("src/test.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
-    run_exe_unit_tests.has_side_effects = true;
+    const exe_tests = b.addTest(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
-    // Similar to creating the run step earlier, this exposes a `test` step to
-    // the `zig build --help` menu, providing a way for the user to request
-    // running the unit tests.
+    const run_exe_integration_tests = b.addRunArtifact(exe_integration_tests);
+    run_exe_integration_tests.has_side_effects = true;
+
+    const integration_test_step = b.step("integration-test", "Run integration tests");
+    integration_test_step.dependOn(&run_exe_integration_tests.step);
+
+    const run_exe_tests = b.addRunArtifact(exe_tests);
+
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_exe_unit_tests.step);
-
-    const client_lib = b.addModule("client", .{ .root_source_file = .{ .cwd_relative = "lib/client/client.zig" } });
-    exe.root_module.addImport("client", client_lib);
-    exe_unit_tests.root_module.addImport("client", client_lib);
-
-    const parser_lib = b.addModule("parser", .{ .root_source_file = .{ .cwd_relative = "lib/parser/parser.zig" } });
-    exe.root_module.addImport("parser", parser_lib);
-    exe_unit_tests.root_module.addImport("parser", parser_lib);
-    client_lib.addImport("parser", parser_lib);
+    test_step.dependOn(&run_exe_tests.step);
 }
