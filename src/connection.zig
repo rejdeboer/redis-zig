@@ -26,19 +26,10 @@ pub const Connection = struct {
 
     pub fn init(listener_fd: i32, memory: *mem.Memory, gpa: std.mem.Allocator) !Self {
         const conn_fd = try posix.accept(listener_fd, null, null, posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
-        const conn = try gpa.create(Connection);
-        conn.fd = conn_fd;
-        conn.memory = memory;
-        conn.rbuf_size = 0;
-        conn.wbuf_size = 0;
-        conn.wbuf_sent = 0;
-        conn.state = .state_req;
-        return conn.*;
+        return Self{ .fd = conn_fd, .rbuf = undefined, .wbuf = undefined, .gpa = gpa, .memory = memory };
     }
 
     pub fn deinit(self: *Self) void {
-        self.gpa.free(&self.rbuf);
-        self.gpa.free(&self.wbuf);
         posix.close(self.fd);
     }
 
