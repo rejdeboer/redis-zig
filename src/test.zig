@@ -3,15 +3,17 @@ const Server = @import("server.zig").Server;
 const config = @import("configuration.zig");
 const client = @import("client");
 
-pub fn start_test_server() !void {
+pub fn start_test_server() !Server {
     const settings = config.Settings.init(std.testing.allocator);
 
     var server = Server.init(settings, std.testing.allocator);
     _ = try std.Thread.spawn(.{}, Server.start, .{&server});
+    return server;
 }
 
 test "ping pong" {
-    try start_test_server();
+    var server = try start_test_server();
+    defer server.deinit();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     const msg = try redis.send([]const u8, "*1\r\n$4\r\nPING\r\n");
@@ -19,7 +21,8 @@ test "ping pong" {
 }
 
 test "echo" {
-    try start_test_server();
+    var server = try start_test_server();
+    defer server.deinit();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     const msg = try redis.send([]const u8, "*2\r\n$4\r\nECHO\r\n$4\r\ntest\r\n");
@@ -27,7 +30,8 @@ test "echo" {
 }
 
 test "set get string" {
-    try start_test_server();
+    var server = try start_test_server();
+    defer server.deinit();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     const set_response = try redis.send([]const u8, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n");
@@ -37,7 +41,8 @@ test "set get string" {
 }
 
 test "set get bool" {
-    try start_test_server();
+    var server = try start_test_server();
+    defer server.deinit();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     const set_response = try redis.send([]const u8, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n#t\r\n");
@@ -47,7 +52,8 @@ test "set get bool" {
 }
 
 test "set get int" {
-    try start_test_server();
+    var server = try start_test_server();
+    defer server.deinit();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     const set_response = try redis.send([]const u8, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n:42\r\n");
@@ -57,7 +63,8 @@ test "set get int" {
 }
 
 test "set get float" {
-    try start_test_server();
+    var server = try start_test_server();
+    defer server.deinit();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     const set_response = try redis.send([]const u8, "*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n,1.23\r\n");
@@ -67,7 +74,8 @@ test "set get float" {
 }
 
 test "set get expired" {
-    try start_test_server();
+    var server = try start_test_server();
+    defer server.deinit();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     const set_response = try redis.send([]const u8, "*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\nEX\r\n$1\r\n0\r\n");
@@ -77,7 +85,8 @@ test "set get expired" {
 }
 
 test "set get not expired" {
-    try start_test_server();
+    var server = try start_test_server();
+    defer server.deinit();
     var redis = try client.Redis.connect("127.0.0.1", 6379);
     defer redis.close();
     const set_response = try redis.send([]const u8, "*5\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$2\r\nEX\r\n$3\r\n999\r\n");

@@ -10,6 +10,7 @@ pub const Server = struct {
     settings: config.Settings,
     memory: mem.Memory,
     stop: bool = false,
+    running: bool = false,
 
     const Self = @This();
 
@@ -19,20 +20,24 @@ pub const Server = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        if (self.running) {
+            self.stop_and_block();
+        }
         self.memory.deinit();
     }
 
     pub fn start(self: *Self) !void {
+        std.log.info("starting server on port: {}", .{self.settings.port});
+        const address = try net.Address.resolveIp(self.settings.bind, self.settings.port);
+
         // Create a non blocking TCP socket
-        const fd = posix.socket(posix.AF.INET, posix.SOCK.STREAM, 0) catch {
+        const fd = posix.socket(address.any.family, posix.SOCK.STREAM, 0) catch {
             return std.log.err("error creating socket", .{});
         };
 
         // Enable REUSE_ADDR
         try posix.setsockopt(fd, posix.SOL.SOCKET, posix.SO.REUSEADDR, &std.mem.toBytes(@as(c_int, 1)));
 
-        std.log.info("starting server on port: {}", .{self.settings.port});
-        const address = try net.Address.resolveIp(self.settings.bind, self.settings.port);
         try posix.bind(fd, &address.any, address.getOsSockLen());
         try posix.listen(fd, 128);
 
@@ -40,9 +45,19 @@ pub const Server = struct {
         _ = try posix.fcntl(fd, posix.F.SETFL, try posix.fcntl(fd, posix.F.GETFL, 0) | posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
 
         var connections = std.AutoHashMap(c_int, connection.Connection).init(self.gpa);
-        defer connections.deinit();
         var poll_args = std.ArrayList(posix.pollfd).init(self.gpa);
-        defer poll_args.deinit();
+        self.running = true;
+        defer {
+            var iterator = connections.valueIterator();
+            while (iterator.next()) |conn| {
+                conn.deinit();
+            }
+            poll_args.clearAndFree();
+            poll_args.deinit();
+            connections.deinit();
+            posix.close(fd);
+            self.running = false;
+        }
         while (!self.stop) {
             poll_args.clearAndFree();
             try poll_args.append(posix.pollfd{ .fd = fd, .events = posix.POLL.IN, .revents = 0 });
@@ -70,7 +85,16 @@ pub const Server = struct {
             if (poll_args.items[0].revents > 0) {
                 const conn = try connection.Connection.init(fd, &self.memory, self.gpa);
                 try connections.put(conn.fd, conn);
+                std.log.info("new client connected", .{});
             }
         }
+    }
+
+    pub fn stop_and_block(self: *Self) void {
+        self.stop = true;
+        while (self.running) {
+            std.time.sleep(1000);
+        }
+        std.log.info("server has been stopped", .{});
     }
 };

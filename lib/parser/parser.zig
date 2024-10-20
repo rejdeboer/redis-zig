@@ -1,5 +1,4 @@
 const std = @import("std");
-const net = std.net;
 
 pub const Command = union(enum) {
     ping: ?[]const u8,
