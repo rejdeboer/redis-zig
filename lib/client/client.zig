@@ -34,7 +34,6 @@ pub const Redis = struct {
     fn read(self: *Self, comptime T: type) !T {
         self.buf_len += try self.stream.read(&self.buf);
         var p = parser.Parser.init(&self.buf, self.buf_len, null);
-        std.debug.print("{s}\n", .{&self.buf});
         return p.parse(T, false) catch |err| switch (err) {
             error.EOF => self.read(T),
             else => err,

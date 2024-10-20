@@ -41,8 +41,8 @@ pub const Connection = struct {
     }
 
     fn handle_read(self: *Self) !void {
-        var bytes_read: usize = 0;
-        while (self.rbuf_size < self.rbuf.len) {
+        var bytes_read: usize = 1;
+        while (bytes_read != 0 and self.rbuf_size < self.rbuf.len) {
             bytes_read = posix.read(self.fd, self.rbuf[self.rbuf_size..]) catch |err| switch (err) {
                 posix.ReadError.WouldBlock => return self.handle_command(),
                 else => return err,

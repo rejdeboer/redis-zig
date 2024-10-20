@@ -4,7 +4,6 @@ const std = @import("std");
 pub const MAX_MESSAGE_SIZE: usize = 4096;
 
 pub const Settings = struct {
-    gpa: std.mem.Allocator,
     port: u16 = 6379,
     bind: []const u8 = "127.0.0.1",
     maxclients: u16 = 10000,
@@ -13,20 +12,16 @@ pub const Settings = struct {
 
     const Self = @This();
 
-    pub fn init(gpa: std.mem.Allocator) Self {
-        return Self{ .gpa = gpa };
-    }
-
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
         if (self.dir != null) {
-            self.gpa.free(self.dir.?);
+            gpa.free(self.dir.?);
         }
         if (self.dbfilename != null) {
-            self.gpa.free(self.dbfilename.?);
+            gpa.free(self.dbfilename.?);
         }
     }
 
-    pub fn read_config_file(self: *Self) !void {
+    pub fn read_config_file(self: *Self, gpa: std.mem.Allocator) !void {
         var args = std.process.args();
         _ = args.skip();
 
@@ -46,7 +41,7 @@ pub const Settings = struct {
         while (try reader.readUntilDelimiterOrEof(&buf, '\n')) |line| {
             var option_split = std.mem.split(u8, line, " ");
             if (option_split.next()) |option| {
-                self.set_option(option, option_split.rest()) catch |err| {
+                self.set_option(option, option_split.rest(), gpa) catch |err| {
                     std.log.err("error parsing configuration option: {s}", .{option});
                     return err;
                 };
@@ -54,7 +49,7 @@ pub const Settings = struct {
         }
     }
 
-    fn set_option(self: *Self, option: []const u8, value: []const u8) !void {
+    fn set_option(self: *Self, option: []const u8, value: []const u8, gpa: std.mem.Allocator) !void {
         if (value.len == 0) {
             return;
         }
@@ -62,13 +57,13 @@ pub const Settings = struct {
         if (std.mem.eql(u8, option, "port")) {
             self.port = try std.fmt.parseInt(u16, value, 10);
         } else if (std.mem.eql(u8, option, "bind")) {
-            self.bind = try std.mem.Allocator.dupe(self.gpa, u8, value);
+            self.bind = try std.mem.Allocator.dupe(gpa, u8, value);
         } else if (std.mem.eql(u8, option, "maxclients")) {
             self.maxclients = try std.fmt.parseInt(u16, value, 10);
         } else if (std.mem.eql(u8, option, "dir")) {
-            self.dir = try std.mem.Allocator.dupe(self.gpa, u8, value);
+            self.dir = try std.mem.Allocator.dupe(gpa, u8, value);
         } else if (std.mem.eql(u8, option, "dbfilename")) {
-            self.dbfilename = try std.mem.Allocator.dupe(self.gpa, u8, value);
+            self.dbfilename = try std.mem.Allocator.dupe(gpa, u8, value);
         } else {
             std.log.warn("unknown configuration option: {s}", .{option});
         }

@@ -9,14 +9,15 @@ pub const Server = struct {
     gpa: std.mem.Allocator,
     settings: config.Settings,
     memory: mem.Memory,
-    stop: bool = false,
-    running: bool = false,
+    // TODO: Fix stopping implementation
+    stop: bool,
+    running: bool,
 
     const Self = @This();
 
-    pub fn init(settings: config.Settings, gpa: std.mem.Allocator) Self {
+    pub fn init(settings: config.Settings, gpa: std.mem.Allocator) !Self {
         const memory = mem.Memory.init(gpa);
-        return Self{ .gpa = gpa, .settings = settings, .memory = memory };
+        return Self{ .gpa = gpa, .settings = settings, .memory = memory, .stop = false, .running = false };
     }
 
     pub fn deinit(self: *Self) void {
@@ -26,11 +27,10 @@ pub const Server = struct {
         self.memory.deinit();
     }
 
-    pub fn start(self: *Self) !void {
-        std.log.info("starting server on port: {}", .{self.settings.port});
+    pub fn run(self: *Self) !void {
         const address = try net.Address.resolveIp(self.settings.bind, self.settings.port);
 
-        // Create a non blocking TCP socket
+        // Create a TCP socket
         const fd = posix.socket(address.any.family, posix.SOCK.STREAM, 0) catch {
             return std.log.err("error creating socket", .{});
         };
@@ -43,6 +43,11 @@ pub const Server = struct {
 
         // Set file descriptor to non-blocking
         _ = try posix.fcntl(fd, posix.F.SETFL, try posix.fcntl(fd, posix.F.GETFL, 0) | posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
+
+        var listen_addr: net.Address = undefined;
+        var addr_len: posix.socklen_t = @sizeOf(net.Address);
+        try posix.getsockname(fd, &listen_addr.any, &addr_len);
+        std.log.info("started server on port: {}", .{listen_addr.getPort()});
 
         var connections = std.AutoHashMap(c_int, connection.Connection).init(self.gpa);
         var poll_args = std.ArrayList(posix.pollfd).init(self.gpa);
@@ -75,6 +80,7 @@ pub const Server = struct {
                 if (arg.revents > 0) {
                     var conn = connections.get(arg.fd).?;
                     conn.update() catch {
+                        std.log.info("client disconnected", .{});
                         _ = connections.remove(arg.fd);
                         conn.deinit();
                     };
@@ -92,9 +98,6 @@ pub const Server = struct {
 
     pub fn stop_and_block(self: *Self) void {
         self.stop = true;
-        while (self.running) {
-            std.time.sleep(1000);
-        }
         std.log.info("server has been stopped", .{});
     }
 };

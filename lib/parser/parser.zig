@@ -160,7 +160,6 @@ pub const Parser = struct {
             self.index += 1;
         }
         if (self.index >= self.length) {
-            std.log.err("WHY", .{});
             return ParsingError.EOF;
         }
 
