@@ -5,7 +5,8 @@ const parser = @import("parser");
 /// Note: This client is not thread-safe
 pub const Redis = struct {
     stream: net.Stream,
-    reader: parser.Parser,
+    buf: [4096]u8,
+    buf_len: usize,
 
     const Self = @This();
 
@@ -15,17 +16,27 @@ pub const Redis = struct {
 
         return Self{
             .stream = stream,
-            .reader = parser.Parser.init(&stream.reader(), null),
+            .buf = undefined,
+            .buf_len = 0,
         };
     }
 
     pub fn send(self: *Self, comptime T: type, command: []const u8) !T {
-        const writer = self.stream.writer();
-        try writer.writeAll(command);
-        return try self.reader.parse(T, false);
+        defer self.buf_len = 0;
+        try self.stream.writeAll(command);
+        return try self.read(T);
     }
 
     pub fn close(self: Self) void {
         self.stream.close();
+    }
+
+    fn read(self: *Self, comptime T: type) !T {
+        self.buf_len += try self.stream.read(&self.buf);
+        var p = parser.Parser.init(&self.buf, self.buf_len, null);
+        return p.parse(T, false) catch |err| switch (err) {
+            error.EOF => self.read(T),
+            else => err,
+        };
     }
 };

@@ -1,16 +1,13 @@
 const std = @import("std");
-const server = @import("server.zig");
+const Server = @import("server.zig").Server;
 const config = @import("configuration.zig");
 const client = @import("client");
 
 pub fn start_test_server() !void {
-    // var rnd = std.rand.DefaultPrng.init(0);
-    const settings = config.Settings{
-        .bind = "127.0.0.1",
-        .port = 6379,
-    };
+    const settings = config.Settings.init(std.testing.allocator);
 
-    _ = try std.Thread.spawn(.{}, server.start, .{ settings, std.testing.allocator });
+    var server = Server.init(settings, std.testing.allocator);
+    _ = try std.Thread.spawn(.{}, Server.start, .{&server});
 }
 
 test "ping pong" {
