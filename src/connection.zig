@@ -117,7 +117,3 @@ pub const Connection = struct {
         self.handle_write() catch unreachable;
     }
 };
-
-test {
-    _ = parsing;
-}

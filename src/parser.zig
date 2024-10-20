@@ -179,3 +179,23 @@ test "integer" {
     var parser = Parser.init(":42\r\n", 5, std.testing.allocator);
     try std.testing.expect(42 == try parser.parse(u32, false));
 }
+
+test "bool" {
+    var parser = Parser.init("#t\r\n", 4, std.testing.allocator);
+    try std.testing.expect(try parser.parse(bool, false));
+}
+
+test "float" {
+    var parser = Parser.init(",1.23\r\n", 6, std.testing.allocator);
+    try std.testing.expect(1.23 == try parser.parse(f32, false));
+}
+
+test "bulk string" {
+    var parser = Parser.init("$4\r\ntest\r\n", 10, std.testing.allocator);
+    try std.testing.expect(std.mem.eql(u8, "test", try parser.parse([]const u8, false)));
+}
+
+test "simple string" {
+    var parser = Parser.init("+test\r\n", 7, std.testing.allocator);
+    try std.testing.expect(std.mem.eql(u8, "test", try parser.parse([]const u8, false)));
+}
