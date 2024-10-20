@@ -66,7 +66,7 @@ pub const Connection = struct {
     }
 
     fn handle_command(self: *Self) void {
-        var parser = parsing.Parser.init(&self.rbuf, self.rbuf_size, self.gpa);
+        var parser = parsing.Parser.init(self.rbuf[0..self.rbuf_size], self.gpa);
 
         const command = parser.parse_command() catch |err| switch (err) {
             error.Unexpected => return self.set_response("-UNEXPECTED COMMAND", .{}),

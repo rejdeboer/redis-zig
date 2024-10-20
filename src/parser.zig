@@ -30,14 +30,13 @@ pub const ParsingError = error{ Unexpected, EOF };
 pub const Parser = struct {
     buf: []const u8,
     index: usize,
-    length: usize,
     gpa: ?std.mem.Allocator,
 
     const Self = @This();
 
     /// Note: If you intend to parse commands, you should pass an allocator
-    pub fn init(buf: []const u8, length: usize, gpa: ?std.mem.Allocator) Self {
-        return Self{ .buf = buf, .index = 0, .length = length, .gpa = gpa };
+    pub fn init(buf: []const u8, gpa: ?std.mem.Allocator) Self {
+        return Self{ .buf = buf, .index = 0, .gpa = gpa };
     }
 
     pub fn parse(self: *Self, comptime T: type, should_allocate: bool) ParsingError!T {
@@ -156,10 +155,10 @@ pub const Parser = struct {
 
     fn read_line(self: *Self, should_allocate: bool) ParsingError![]const u8 {
         const start = self.index;
-        while (self.index < self.length and self.buf[self.index] != '\r') {
+        while (self.index < self.buf.len and self.buf[self.index] != '\r') {
             self.index += 1;
         }
-        if (self.index >= self.length) {
+        if (self.index >= self.buf.len) {
             return ParsingError.EOF;
         }
 
@@ -176,26 +175,26 @@ pub const Parser = struct {
 };
 
 test "integer" {
-    var parser = Parser.init(":42\r\n", 5, std.testing.allocator);
+    var parser = Parser.init(":42\r\n", std.testing.allocator);
     try std.testing.expect(42 == try parser.parse(u32, false));
 }
 
 test "bool" {
-    var parser = Parser.init("#t\r\n", 4, std.testing.allocator);
+    var parser = Parser.init("#t\r\n", std.testing.allocator);
     try std.testing.expect(try parser.parse(bool, false));
 }
 
 test "float" {
-    var parser = Parser.init(",1.23\r\n", 6, std.testing.allocator);
+    var parser = Parser.init(",1.23\r\n", std.testing.allocator);
     try std.testing.expect(1.23 == try parser.parse(f32, false));
 }
 
 test "bulk string" {
-    var parser = Parser.init("$4\r\ntest\r\n", 10, std.testing.allocator);
+    var parser = Parser.init("$4\r\ntest\r\n", std.testing.allocator);
     try std.testing.expect(std.mem.eql(u8, "test", try parser.parse([]const u8, false)));
 }
 
 test "simple string" {
-    var parser = Parser.init("+test\r\n", 7, std.testing.allocator);
+    var parser = Parser.init("+test\r\n", std.testing.allocator);
     try std.testing.expect(std.mem.eql(u8, "test", try parser.parse([]const u8, false)));
 }
