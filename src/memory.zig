@@ -24,8 +24,8 @@ pub const Memory = struct {
         if (self.storage.get(key)) |entry| {
             if (entry.expiry_ms != null and entry.expiry_ms.? <= std.time.milliTimestamp()) {
                 self.gpa.free(entry.value.string);
-                _ = self.storage.remove(key);
                 self.gpa.free(self.storage.getKey(key).?);
+                _ = self.storage.remove(key);
                 return null;
             }
             return entry;

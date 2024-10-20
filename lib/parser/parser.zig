@@ -1,5 +1,4 @@
 const std = @import("std");
-const net = std.net;
 
 pub const Command = union(enum) {
     ping: ?[]const u8,
@@ -26,18 +25,19 @@ const SetCommand = struct {
     entry: RedisEntry,
 };
 
-pub const ParsingError = error{Unexpected};
+pub const ParsingError = error{ Unexpected, EOF };
 
 pub const Parser = struct {
-    reader: *const net.Stream.Reader,
-    buf: [1024]u8,
+    buf: []const u8,
+    index: usize,
+    length: usize,
     gpa: ?*const std.mem.Allocator,
 
     const Self = @This();
 
     /// Note: If you intend to parse commands, you should pass an allocator
-    pub fn init(reader: *const net.Stream.Reader, gpa: ?*const std.mem.Allocator) Self {
-        return Parser{ .reader = reader, .buf = undefined, .gpa = gpa };
+    pub fn init(buf: []const u8, length: usize, gpa: ?*const std.mem.Allocator) Self {
+        return Self{ .buf = buf, .index = 0, .length = length, .gpa = gpa };
     }
 
     pub fn parse(self: *Self, comptime T: type, should_allocate: bool) ParsingError!T {
@@ -155,17 +155,22 @@ pub const Parser = struct {
     }
 
     fn read_line(self: *Self, should_allocate: bool) ParsingError![]const u8 {
-        if (if (should_allocate) self.reader.*.readUntilDelimiterOrEofAlloc(self.gpa.?.*, '\r', 4096) else self.reader.*.readUntilDelimiterOrEof(&self.buf, '\r')) |line| {
-            self.reader.*.skipBytes(1, .{}) catch {
-                return ParsingError.Unexpected;
-            };
-            if (line == null or line.?.len == 0) {
-                std.log.err("reached unexpected EOF", .{});
-                return ParsingError.Unexpected;
-            }
-            return line.?;
-        } else |_| {
-            return ParsingError.Unexpected;
+        const start = self.index;
+        while (self.index < self.length and self.buf[self.index] != '\r') {
+            self.index += 1;
         }
+        if (self.index >= self.length) {
+            return ParsingError.EOF;
+        }
+
+        const line = self.buf[start..self.index];
+
+        // Skip the \r\n
+        self.index += 2;
+
+        if (should_allocate) {
+            return self.gpa.?.dupe(u8, line) catch return ParsingError.Unexpected;
+        }
+        return line;
     }
 };
