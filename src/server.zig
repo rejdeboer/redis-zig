@@ -9,21 +9,15 @@ pub const Server = struct {
     gpa: std.mem.Allocator,
     settings: config.Settings,
     memory: mem.Memory,
-    // TODO: Fix stopping implementation
-    stop: bool,
-    running: bool,
 
     const Self = @This();
 
     pub fn init(settings: config.Settings, gpa: std.mem.Allocator) !Self {
         const memory = mem.Memory.init(gpa);
-        return Self{ .gpa = gpa, .settings = settings, .memory = memory, .stop = false, .running = false };
+        return Self{ .gpa = gpa, .settings = settings, .memory = memory };
     }
 
     pub fn deinit(self: *Self) void {
-        if (self.running) {
-            self.stop_and_block();
-        }
         self.memory.deinit();
     }
 
@@ -51,7 +45,6 @@ pub const Server = struct {
 
         var connections = std.AutoHashMap(c_int, connection.Connection).init(self.gpa);
         var poll_args = std.ArrayList(posix.pollfd).init(self.gpa);
-        self.running = true;
         defer {
             var iterator = connections.valueIterator();
             while (iterator.next()) |conn| {
@@ -61,9 +54,8 @@ pub const Server = struct {
             poll_args.deinit();
             connections.deinit();
             posix.close(fd);
-            self.running = false;
         }
-        while (!self.stop) {
+        while (true) {
             poll_args.clearAndFree();
             try poll_args.append(posix.pollfd{ .fd = fd, .events = posix.POLL.IN, .revents = 0 });
 
@@ -80,7 +72,7 @@ pub const Server = struct {
                 if (arg.revents > 0) {
                     var conn = connections.get(arg.fd).?;
                     conn.update() catch {
-                        std.log.info("client disconnected", .{});
+                        std.log.info("client disconnected: {}", .{arg.fd});
                         _ = connections.remove(arg.fd);
                         conn.deinit();
                     };
@@ -91,13 +83,8 @@ pub const Server = struct {
             if (poll_args.items[0].revents > 0) {
                 const conn = try connection.Connection.init(fd, &self.memory, self.gpa);
                 try connections.put(conn.fd, conn);
-                std.log.info("new client connected", .{});
+                std.log.info("client connected: {}", .{conn.fd});
             }
         }
-    }
-
-    pub fn stop_and_block(self: *Self) void {
-        self.stop = true;
-        std.log.info("server has been stopped", .{});
     }
 };
