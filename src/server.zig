@@ -3,7 +3,7 @@ const net = std.net;
 const posix = std.posix;
 const mem = @import("memory.zig");
 const config = @import("configuration.zig");
-const connection = @import("connection.zig");
+const Connection = @import("connection.zig").Connection;
 const DList = @import("dlist.zig").DList;
 
 const DEFAULT_POLL_TIMEOUT_MS: i64 = 10000;
@@ -14,14 +14,14 @@ pub const Server = struct {
     gpa: std.mem.Allocator,
     settings: config.Settings,
     memory: mem.Memory,
-    connections: std.AutoHashMap(c_int, *connection.Connection),
+    connections: std.AutoHashMap(c_int, *Connection),
     idle_list: DList = undefined,
 
     const Self = @This();
 
     pub fn init(settings: config.Settings, gpa: std.mem.Allocator) !Self {
         const memory = mem.Memory.init(gpa);
-        const connections = std.AutoHashMap(c_int, *connection.Connection).init(gpa);
+        const connections = std.AutoHashMap(c_int, *Connection).init(gpa);
         return Self{ .gpa = gpa, .settings = settings, .memory = memory, .connections = connections };
     }
 
@@ -94,7 +94,7 @@ pub const Server = struct {
 
             // Check if listener is active and accept new connection
             if (poll_args.items[0].revents > 0) {
-                const conn = try connection.Connection.init(fd, &self.memory, &self.idle_list, self.gpa);
+                const conn = try Connection.init(fd, &self.memory, &self.idle_list, self.gpa);
                 try self.connections.put(conn.fd, conn);
                 std.log.info("client connected: {}", .{conn.fd});
             }
@@ -107,7 +107,7 @@ pub const Server = struct {
         }
 
         const now = std.time.milliTimestamp();
-        const conn: *connection.Connection = @fieldParentPtr("idle_list", self.idle_list.next);
+        const conn: *Connection = @fieldParentPtr("idle_list", self.idle_list.next);
         const next = conn.idle_start_ms + IDLE_TIMEOUT_MS;
 
         if (next <= now) {
@@ -120,7 +120,7 @@ pub const Server = struct {
     fn process_timers(self: *Self) void {
         while (!self.idle_list.is_empty()) {
             const now = std.time.milliTimestamp();
-            const conn: *connection.Connection = @fieldParentPtr("idle_list", self.idle_list.next);
+            const conn: *Connection = @fieldParentPtr("idle_list", self.idle_list.next);
 
             if (now + 1 < conn.idle_start_ms + IDLE_TIMEOUT_MS) {
                 return;
@@ -130,7 +130,7 @@ pub const Server = struct {
         }
     }
 
-    fn disconnect_client(self: *Self, conn: *connection.Connection) void {
+    fn disconnect_client(self: *Self, conn: *Connection) void {
         _ = self.connections.remove(conn.fd);
         std.log.info("client disconnected: {}", .{conn.fd});
         conn.deinit();
