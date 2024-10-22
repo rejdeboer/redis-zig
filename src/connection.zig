@@ -1,8 +1,11 @@
 const std = @import("std");
 const posix = std.posix;
-const config = @import("configuration.zig");
 const mem = @import("memory.zig");
+const DList = @import("dlist.zig").DList;
 const parsing = @import("parser.zig");
+
+/// Note: This is just for convenience, the actual implementation has a limit of 512Mb
+const MAX_MESSAGE_SIZE: usize = 4096;
 
 const ConnectionState = union(enum) {
     state_req,
@@ -15,25 +18,41 @@ pub const Connection = struct {
     state: ConnectionState = .state_req,
     rbuf_size: usize = 0,
     /// Read buffer
-    rbuf: [config.MAX_MESSAGE_SIZE]u8,
+    rbuf: [MAX_MESSAGE_SIZE]u8,
     wbuf_size: usize = 0,
     wbuf_sent: usize = 0,
     /// Write buffer
-    wbuf: [config.MAX_MESSAGE_SIZE]u8,
+    wbuf: [MAX_MESSAGE_SIZE]u8,
+    idle_start_ms: i64,
+    idle_list: DList,
     memory: *mem.Memory,
 
     const Self = @This();
 
-    pub fn init(listener_fd: i32, memory: *mem.Memory, gpa: std.mem.Allocator) !Self {
+    pub fn init(listener_fd: i32, memory: *mem.Memory, server_idle_list: *DList, gpa: std.mem.Allocator) !*Self {
         const conn_fd = try posix.accept(listener_fd, null, null, posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
-        return Self{ .fd = conn_fd, .rbuf = undefined, .wbuf = undefined, .gpa = gpa, .memory = memory };
+        const self = try gpa.create(Self);
+        self.fd = conn_fd;
+        self.wbuf_size = 0;
+        self.rbuf_size = 0;
+        self.wbuf_sent = 0;
+        self.idle_start_ms = std.time.milliTimestamp();
+        self.memory = memory;
+        self.gpa = gpa;
+        server_idle_list.prepend(&self.idle_list);
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
+        self.idle_list.detach();
         posix.close(self.fd);
+        self.gpa.destroy(self);
     }
 
-    pub fn update(self: *Self) !void {
+    pub fn update(self: *Self, server_idle_list: *DList) !void {
+        self.idle_start_ms = std.time.milliTimestamp();
+        self.idle_list.detach();
+        server_idle_list.prepend(&self.idle_list);
         switch (self.state) {
             .state_req => try self.handle_read(),
             .state_res => try self.handle_write(),
@@ -69,8 +88,7 @@ pub const Connection = struct {
         var parser = parsing.Parser.init(self.rbuf[0..self.rbuf_size], self.gpa);
 
         const command = parser.parse_command() catch |err| switch (err) {
-            error.Unexpected => return self.set_response("-UNEXPECTED COMMAND", .{}),
-            // Not yet finished reading
+            error.Unexpected => return self.set_response("-UNEXPECTED COMMAND\r\n", .{}),
             error.EOF => return,
         };
         switch (command) {

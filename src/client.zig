@@ -2,6 +2,9 @@ const std = @import("std");
 const net = std.net;
 const parser = @import("parser.zig");
 
+// TODO: Implement client error
+pub const ClientError = {};
+
 /// Note: This client is not thread-safe
 pub const Redis = struct {
     stream: net.Stream,
@@ -33,7 +36,7 @@ pub const Redis = struct {
 
     fn read(self: *Self, comptime T: type) !T {
         self.buf_len += try self.stream.read(&self.buf);
-        var p = parser.Parser.init(&self.buf, self.buf_len, null);
+        var p = parser.Parser.init(self.buf[0..self.buf_len], null);
         return p.parse(T, false) catch |err| switch (err) {
             error.EOF => self.read(T),
             else => err,

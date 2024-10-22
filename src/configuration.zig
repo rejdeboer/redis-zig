@@ -1,8 +1,5 @@
 const std = @import("std");
 
-/// Note: This is just for convenience, the actual implementation has a limit of 512Mb
-pub const MAX_MESSAGE_SIZE: usize = 4096;
-
 pub const Settings = struct {
     port: u16 = 6379,
     bind: []const u8 = "127.0.0.1",

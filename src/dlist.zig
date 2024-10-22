@@ -1,6 +1,6 @@
 pub const DList = struct {
-    prev: *DList = null,
-    next: *DList = null,
+    prev: *DList = undefined,
+    next: *DList = undefined,
 
     pub inline fn init(node: *DList) void {
         node.prev = node;
@@ -8,7 +8,7 @@ pub const DList = struct {
     }
 
     pub inline fn is_empty(node: *DList) bool {
-        return node.next == node;
+        return node == node.next;
     }
 
     pub inline fn detach(node: *DList) void {

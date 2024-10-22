@@ -198,3 +198,8 @@ test "simple string" {
     var parser = Parser.init("+test\r\n", std.testing.allocator);
     try std.testing.expect(std.mem.eql(u8, "test", try parser.parse([]const u8, false)));
 }
+
+test "error" {
+    var parser = Parser.init("-test\r\n", std.testing.allocator);
+    try std.testing.expect(std.mem.eql(u8, "test", try parser.parse([]const u8, false)));
+}
