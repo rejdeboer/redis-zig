@@ -8,7 +8,7 @@ const DList = @import("dlist.zig").DList;
 
 const DEFAULT_POLL_TIMEOUT_MS: i64 = 10000;
 const IDLE_TIMEOUT_MS: i64 = 5000;
-// const READ_TIMEOUT_MS: i64 = 500;
+const READ_TIMEOUT_MS: i64 = 500;
 
 pub const Server = struct {
     gpa: std.mem.Allocator,
@@ -75,9 +75,7 @@ pub const Server = struct {
                 try poll_args.append(posix.pollfd{ .fd = conn.*.fd, .events = p_byte | posix.POLL.ERR, .revents = 0 });
             }
 
-            const timeout = self.get_next_timer();
-            std.log.info("looping {}", .{timeout});
-            _ = try posix.poll(poll_args.items, timeout);
+            _ = try posix.poll(poll_args.items, self.get_next_timer());
 
             // Process active connections
             for (poll_args.items[1..]) |arg| {
@@ -108,7 +106,7 @@ pub const Server = struct {
 
         const now = std.time.milliTimestamp();
         const conn: *Connection = @fieldParentPtr("idle_list", self.idle_list.next);
-        const next = conn.idle_start_ms + IDLE_TIMEOUT_MS;
+        const next = if (conn.rbuf_size > 0) conn.idle_start_ms + READ_TIMEOUT_MS else conn.idle_start_ms + IDLE_TIMEOUT_MS;
 
         if (next <= now) {
             return 0;
@@ -122,7 +120,10 @@ pub const Server = struct {
             const now = std.time.milliTimestamp();
             const conn: *Connection = @fieldParentPtr("idle_list", self.idle_list.next);
 
-            if (now + 1 < conn.idle_start_ms + IDLE_TIMEOUT_MS) {
+            // TODO: DLL is not reliable with both read and idle timeouts
+            if (conn.rbuf_size > 0 and now + 1 >= conn.idle_start_ms + READ_TIMEOUT_MS) {
+                return conn.timeout_read();
+            } else if (now + 1 < conn.idle_start_ms + IDLE_TIMEOUT_MS) {
                 return;
             }
 

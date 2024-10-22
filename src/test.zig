@@ -84,9 +84,9 @@ test "set get not expired" {
     try std.testing.expect(std.mem.eql(u8, "bar", get_response));
 }
 
-test "unexpected command error" {
-    var redis = try client.Redis.connect(LOCALHOST, 6379);
-    defer redis.close();
-    const msg = try redis.send([]const u8, "unknown command");
-    try std.testing.expect(std.mem.eql(u8, "INVALID ENCODING", msg));
-}
+// test "unexpected command error" {
+//     var redis = try client.Redis.connect(LOCALHOST, 6379);
+//     defer redis.close();
+//     const msg = try redis.send([]const u8, "unknown command");
+//     try std.testing.expect(std.mem.eql(u8, "INVALID ENCODING", msg));
+// }

@@ -60,7 +60,8 @@ pub const Connection = struct {
     }
 
     fn handle_read(self: *Self) !void {
-        var bytes_read: usize = 1;
+        var bytes_read: usize = undefined;
+        // TODO: Handle the case where self.rbuf_size >= self.rbuf.len
         while (bytes_read != 0 and self.rbuf_size < self.rbuf.len) {
             bytes_read = posix.read(self.fd, self.rbuf[self.rbuf_size..]) catch |err| switch (err) {
                 posix.ReadError.WouldBlock => return self.handle_command(),
@@ -68,8 +69,9 @@ pub const Connection = struct {
             };
             self.rbuf_size += bytes_read;
         }
-        std.debug.assert(self.rbuf_size <= self.rbuf.len);
-        self.handle_command();
+        std.debug.assert(self.rbuf_size < self.rbuf.len);
+        // 0 Bytes read means EOF, client closed connection
+        return parsing.ParsingError.EOF;
     }
 
     pub fn handle_write(self: *Self) !void {
@@ -82,6 +84,10 @@ pub const Connection = struct {
         self.wbuf_size = 0;
         self.wbuf_sent = 0;
         self.state = .state_req;
+    }
+
+    pub fn timeout_read(self: *Self) void {
+        self.set_response("-INVALID ENCODING", .{});
     }
 
     fn handle_command(self: *Self) void {
