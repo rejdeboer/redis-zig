@@ -1,4 +1,5 @@
 const std = @import("std");
+const clap = @import("clap");
 
 pub const Settings = struct {
     port: u16 = 6379,

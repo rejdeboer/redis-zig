@@ -64,4 +64,8 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_tests.step);
+
+    // MODULES
+    const clap_lib = b.addModule("clap", .{ .root_source_file = .{ .cwd_relative = "lib/clap/clap.zig" } });
+    exe.root_module.addImport("clap", clap_lib);
 }
