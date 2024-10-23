@@ -7,7 +7,10 @@ pub fn main() !void {
     defer std.debug.assert(gpa_alloc.deinit() == .ok);
     const gpa = gpa_alloc.allocator();
 
-    var settings = configuration.Settings{};
+    var settings = configuration.Settings.init(gpa) catch |err| switch (err) {
+        configuration.ConfigError.HelpRequested => return,
+        else => return err,
+    };
     defer settings.deinit(gpa);
 
     var s = try server.Server.init(settings, gpa);

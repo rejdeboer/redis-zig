@@ -1,6 +1,10 @@
 const std = @import("std");
 const clap = @import("clap");
 
+pub const ConfigError = error{
+    HelpRequested,
+};
+
 pub const Settings = struct {
     port: u16 = 6379,
     bind: []const u8 = "127.0.0.1",
@@ -10,7 +14,43 @@ pub const Settings = struct {
 
     const Self = @This();
 
-    pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
+    pub fn init(gpa: std.mem.Allocator) !Self {
+        var self = Self{};
+
+        const params = comptime clap.parseParamsComptime(
+            \\-h, --help             Display this help and exit.
+            \\-p, --port <u16>       The listening port.
+            \\-b, --bind <str>...    The host to bind to.
+            \\--maxclients <u16>     The maximum amount of clients that can connect simultaneously.
+            \\--dir <str>...         The directory where the RDB file will be stored.
+            \\--dbfilename <str>...  The name of the RDB file.
+            \\<str>...               An optional Redis config file
+        );
+
+        var diag = clap.Diagnostic{};
+        var res = clap.parse(clap.Help, &params, clap.parsers.default, .{
+            .diagnostic = &diag,
+            .allocator = gpa,
+        }) catch |err| {
+            // Report useful error and exit
+            diag.report(std.io.getStdErr().writer(), err) catch {};
+            return err;
+        };
+        defer res.deinit();
+
+        if (res.args.help != 0) {
+            try clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+            return ConfigError.HelpRequested;
+        }
+
+        if (res.positionals.len > 0) {
+            try self.read_config_file(res.positionals[0], gpa);
+        }
+
+        return self;
+    }
+
+    pub fn deinit(self: *Settings, gpa: std.mem.Allocator) void {
         if (self.dir != null) {
             gpa.free(self.dir.?);
         }
@@ -19,17 +59,9 @@ pub const Settings = struct {
         }
     }
 
-    pub fn read_config_file(self: *Self, gpa: std.mem.Allocator) !void {
-        var args = std.process.args();
-        _ = args.skip();
-
-        const path = args.next();
-        if (path == null) {
-            return;
-        }
-
-        std.log.info("reading config file with path: {s}", .{path.?});
-        var file = try std.fs.cwd().openFile(path.?, .{});
+    pub fn read_config_file(self: *Self, path: []const u8, gpa: std.mem.Allocator) !void {
+        std.log.info("reading config file with path: {s}", .{path});
+        var file = try std.fs.cwd().openFile(path, .{});
         defer file.close();
 
         var buf_reader = std.io.bufferedReader(file.reader());
