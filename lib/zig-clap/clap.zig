@@ -1,4 +1,22 @@
-pub const default_assignment_separators = "=";
+const std = @import("std");
+
+const builtin = std.builtin;
+const debug = std.debug;
+const heap = std.heap;
+const io = std.io;
+const math = std.math;
+const mem = std.mem;
+const meta = std.meta;
+const process = std.process;
+const testing = std.testing;
+
+pub const args = @import("clap/args.zig");
+pub const parsers = @import("clap/parsers.zig");
+pub const streaming = @import("clap/streaming.zig");
+
+test "clap" {
+    testing.refAllDecls(@This());
+}
 
 /// The names a `Param` can have.
 pub const Names = struct {
@@ -76,14 +94,14 @@ pub fn Param(comptime Id: type) type {
 
 /// Takes a string and parses it into many Param(Help). Returned is a newly allocated slice
 /// containing all the parsed params. The caller is responsible for freeing the slice.
-pub fn parseParams(allocator: std.mem.Allocator, str: []const u8) ![]Param(Help) {
+pub fn parseParams(allocator: mem.Allocator, str: []const u8) ![]Param(Help) {
     var end: usize = undefined;
     return parseParamsEx(allocator, str, &end);
 }
 
 /// Takes a string and parses it into many Param(Help). Returned is a newly allocated slice
 /// containing all the parsed params. The caller is responsible for freeing the slice.
-pub fn parseParamsEx(allocator: std.mem.Allocator, str: []const u8, end: *usize) ![]Param(Help) {
+pub fn parseParamsEx(allocator: mem.Allocator, str: []const u8, end: *usize) ![]Param(Help) {
     var list = std.ArrayList(Param(Help)).init(allocator);
     errdefer list.deinit();
 
@@ -109,16 +127,16 @@ pub fn parseParamsComptime(comptime str: []const u8) [countParams(str)]Param(Hel
 }
 
 fn countParams(str: []const u8) usize {
-    // See parseParamEx for reasoning. I would like to remove it from parseParam, but people
-    // depend on that function to still work conveniently at comptime, so leaving it for now.
+    // See parseParam for reasoning. I would like to remove it from parseParam, but people depend
+    // on that function to still work conveniently at comptime, so leaving it for now.
     @setEvalBranchQuota(std.math.maxInt(u32));
 
     var res: usize = 0;
-    var it = std.mem.splitScalar(u8, str, '\n');
+    var it = mem.splitScalar(u8, str, '\n');
     while (it.next()) |line| {
-        const trimmed = std.mem.trimLeft(u8, line, " \t");
-        if (std.mem.startsWith(u8, trimmed, "-") or
-            std.mem.startsWith(u8, trimmed, "<"))
+        const trimmed = mem.trimLeft(u8, line, " \t");
+        if (mem.startsWith(u8, trimmed, "-") or
+            mem.startsWith(u8, trimmed, "<"))
         {
             res += 1;
         }
@@ -131,7 +149,7 @@ fn countParams(str: []const u8) usize {
 /// is returned, containing all the parameters parsed. This function will fail if the input slice
 /// is to small.
 pub fn parseParamsIntoSlice(slice: []Param(Help), str: []const u8) ![]Param(Help) {
-    var null_alloc = std.heap.FixedBufferAllocator.init("");
+    var null_alloc = heap.FixedBufferAllocator.init("");
     var list = std.ArrayList(Param(Help)){
         .allocator = null_alloc.allocator(),
         .items = slice[0..0],
@@ -146,7 +164,7 @@ pub fn parseParamsIntoSlice(slice: []Param(Help), str: []const u8) ![]Param(Help
 /// is returned, containing all the parameters parsed. This function will fail if the input slice
 /// is to small.
 pub fn parseParamsIntoSliceEx(slice: []Param(Help), str: []const u8, end: *usize) ![]Param(Help) {
-    var null_alloc = std.heap.FixedBufferAllocator.init("");
+    var null_alloc = heap.FixedBufferAllocator.init("");
     var list = std.ArrayList(Param(Help)){
         .allocator = null_alloc.allocator(),
         .items = slice[0..0],
@@ -389,7 +407,7 @@ pub fn parseParamEx(str: []const u8, end: *usize) !Param(Help) {
 
 fn testParseParams(str: []const u8, expected_params: []const Param(Help)) !void {
     var end: usize = undefined;
-    const actual_params = parseParamsEx(std.testing.allocator, str, &end) catch |err| {
+    const actual_params = parseParamsEx(testing.allocator, str, &end) catch |err| {
         const loc = std.zig.findLineColumn(str, end);
         std.debug.print("error:{}:{}: Failed to parse parameter:\n{s}\n", .{
             loc.line + 1,
@@ -398,22 +416,22 @@ fn testParseParams(str: []const u8, expected_params: []const Param(Help)) !void 
         });
         return err;
     };
-    defer std.testing.allocator.free(actual_params);
+    defer testing.allocator.free(actual_params);
 
-    try std.testing.expectEqual(expected_params.len, actual_params.len);
+    try testing.expectEqual(expected_params.len, actual_params.len);
     for (expected_params, 0..) |_, i|
         try expectParam(expected_params[i], actual_params[i]);
 }
 
 fn expectParam(expect: Param(Help), actual: Param(Help)) !void {
-    try std.testing.expectEqualStrings(expect.id.desc, actual.id.desc);
-    try std.testing.expectEqualStrings(expect.id.val, actual.id.val);
-    try std.testing.expectEqual(expect.names.short, actual.names.short);
-    try std.testing.expectEqual(expect.takes_value, actual.takes_value);
+    try testing.expectEqualStrings(expect.id.desc, actual.id.desc);
+    try testing.expectEqualStrings(expect.id.val, actual.id.val);
+    try testing.expectEqual(expect.names.short, actual.names.short);
+    try testing.expectEqual(expect.takes_value, actual.takes_value);
     if (expect.names.long) |long| {
-        try std.testing.expectEqualStrings(long, actual.names.long.?);
+        try testing.expectEqualStrings(long, actual.names.long.?);
     } else {
-        try std.testing.expectEqual(@as(?[]const u8, null), actual.names.long);
+        try testing.expectEqual(@as(?[]const u8, null), actual.names.long);
     }
 }
 
@@ -528,11 +546,11 @@ test "parseParams" {
         },
     });
 
-    try std.testing.expectError(error.InvalidParameter, parseParam("--long, Help"));
-    try std.testing.expectError(error.InvalidParameter, parseParam("-s, Help"));
-    try std.testing.expectError(error.InvalidParameter, parseParam("-ss Help"));
-    try std.testing.expectError(error.InvalidParameter, parseParam("-ss <val> Help"));
-    try std.testing.expectError(error.InvalidParameter, parseParam("- Help"));
+    try testing.expectError(error.InvalidParameter, parseParam("--long, Help"));
+    try testing.expectError(error.InvalidParameter, parseParam("-s, Help"));
+    try testing.expectError(error.InvalidParameter, parseParam("-ss Help"));
+    try testing.expectError(error.InvalidParameter, parseParam("-ss <val> Help"));
+    try testing.expectError(error.InvalidParameter, parseParam("- Help"));
 }
 
 /// Optional diagnostics used for reporting useful errors
@@ -567,9 +585,9 @@ pub const Diagnostic = struct {
 
 fn testDiag(diag: Diagnostic, err: anyerror, expected: []const u8) !void {
     var buf: [1024]u8 = undefined;
-    var slice_stream = std.io.fixedBufferStream(&buf);
+    var slice_stream = io.fixedBufferStream(&buf);
     diag.report(slice_stream.writer(), err) catch unreachable;
-    try std.testing.expectEqualStrings(expected, slice_stream.getWritten());
+    try testing.expectEqualStrings(expected, slice_stream.getWritten());
 }
 
 test "Diagnostic.report" {
@@ -623,19 +641,8 @@ test "Diagnostic.report" {
 
 /// Options that can be set to customize the behavior of parsing.
 pub const ParseOptions = struct {
-    allocator: std.mem.Allocator,
+    allocator: mem.Allocator,
     diagnostic: ?*Diagnostic = null,
-
-    /// The assignment separators, which by default is `=`. This is the separator between the name
-    /// of an argument and its value. For `--arg=value`, `arg` is the name and `value` is the value
-    /// if `=` is one of the assignment separators.
-    assignment_separators: []const u8 = default_assignment_separators,
-
-    /// This option makes `clap.parse` and `clap.parseEx` stop parsing after encountering a
-    /// certain positional index. Setting `terminating_positional` to 0 will make them stop
-    /// parsing after the 0th positional has been added to `positionals` (aka after parsing 1
-    /// positional)
-    terminating_positional: usize = std.math.maxInt(usize),
 };
 
 /// Same as `parseEx` but uses the `args.OsIterator` by default.
@@ -645,18 +652,16 @@ pub fn parse(
     comptime value_parsers: anytype,
     opt: ParseOptions,
 ) !Result(Id, params, value_parsers) {
-    var arena = std.heap.ArenaAllocator.init(opt.allocator);
+    var arena = heap.ArenaAllocator.init(opt.allocator);
     errdefer arena.deinit();
 
-    var iter = try std.process.ArgIterator.initWithAllocator(arena.allocator());
+    var iter = try process.ArgIterator.initWithAllocator(arena.allocator());
     const exe_arg = iter.next();
 
     const result = try parseEx(Id, params, value_parsers, &iter, .{
-        // Let's reuse the arena from the `ArgIterator` since we already have it.
+        // Let's reuse the arena from the `OSIterator` since we already have it.
         .allocator = arena.allocator(),
         .diagnostic = opt.diagnostic,
-        .assignment_separators = opt.assignment_separators,
-        .terminating_positional = opt.terminating_positional,
     });
 
     return Result(Id, params, value_parsers){
@@ -675,7 +680,7 @@ pub fn Result(
 ) type {
     return struct {
         args: Arguments(Id, params, value_parsers, .slice),
-        positionals: Positionals(Id, params, value_parsers, .slice),
+        positionals: []const FindPositionalType(Id, params, value_parsers),
         exe_arg: ?[]const u8,
         arena: std.heap.ArenaAllocator,
 
@@ -718,61 +723,45 @@ pub fn parseEx(
     opt: ParseOptions,
 ) !ResultEx(Id, params, value_parsers) {
     const allocator = opt.allocator;
+    const Positional = FindPositionalType(Id, params, value_parsers);
 
-    var positional_count: usize = 0;
-    var positionals = initPositionals(Positionals(Id, params, value_parsers, .list));
-    errdefer deinitPositionals(&positionals, allocator);
-
+    var positionals = std.ArrayList(Positional).init(allocator);
     var arguments = Arguments(Id, params, value_parsers, .list){};
-    errdefer deinitArgs(&arguments, allocator);
+    errdefer deinitArgs(Id, params, allocator, &arguments);
 
-    var stream = streaming.Clap(Id, std.meta.Child(@TypeOf(iter))){
+    var stream = streaming.Clap(Id, meta.Child(@TypeOf(iter))){
         .params = params,
         .iter = iter,
         .diagnostic = opt.diagnostic,
-        .assignment_separators = opt.assignment_separators,
     };
-    arg_loop: while (try stream.next()) |arg| {
-        inline for (params) |*param| continue_params_loop: {
-            if (param != arg.param)
-                // This is a trick to emulate a runtime `continue` in an `inline for`.
-                break :continue_params_loop;
-
-            const parser = comptime switch (param.takes_value) {
-                .none => null,
-                .one, .many => @field(value_parsers, param.id.value()),
-            };
-
-            const longest = comptime param.names.longest();
-            const name = longest.name[0..longest.name.len].*;
-            switch (longest.kind) {
-                .short, .long => switch (param.takes_value) {
-                    .none => @field(arguments, &name) +|= 1,
-                    .one => @field(arguments, &name) = try parser(arg.value.?),
-                    .many => {
-                        const value = try parser(arg.value.?);
-                        try @field(arguments, &name).append(allocator, value);
-                    },
-                },
-                .positional => {
-                    switch (@typeInfo(@TypeOf(positionals))) {
-                        .optional => positionals = try parser(arg.value.?),
-                        else => try positionals.append(allocator, try parser(arg.value.?)),
-                    }
-                    if (opt.terminating_positional <= positional_count)
-                        break :arg_loop;
-
-                    positional_count += 1;
-                },
+    while (try stream.next()) |arg| {
+        // TODO: We cannot use `try` inside the inline for because of a compiler bug that
+        //       generates an infinite loop. For now, use a variable to store the error
+        //       and use `try` outside. The downside of this is that we have to use
+        //       `anyerror` :(
+        var res: anyerror!void = {};
+        inline for (params) |*param| {
+            if (param == arg.param) {
+                res = parseArg(
+                    Id,
+                    param.*,
+                    value_parsers,
+                    allocator,
+                    &arguments,
+                    &positionals,
+                    arg,
+                );
             }
         }
+
+        try res;
     }
 
     // We are done parsing, but our arguments are stored in lists, and not slices. Map the list
     // fields to slices and return that.
     var result_args = Arguments(Id, params, value_parsers, .slice){};
-    inline for (std.meta.fields(@TypeOf(arguments))) |field| {
-        if (@typeInfo(field.type) == .@"struct" and
+    inline for (meta.fields(@TypeOf(arguments))) |field| {
+        if (@typeInfo(field.type) == .Struct and
             @hasDecl(field.type, "toOwnedSlice"))
         {
             const slice = try @field(arguments, field.name).toOwnedSlice(allocator);
@@ -782,17 +771,40 @@ pub fn parseEx(
         }
     }
 
-    // We are done parsing, but our positionals are stored in lists, and not slices.
-    const result_positionals = switch (@typeInfo(@TypeOf(positionals))) {
-        .optional => positionals,
-        else => try positionals.toOwnedSlice(allocator),
-    };
-
     return ResultEx(Id, params, value_parsers){
         .args = result_args,
-        .positionals = result_positionals,
+        .positionals = try positionals.toOwnedSlice(),
         .allocator = allocator,
     };
+}
+
+fn parseArg(
+    comptime Id: type,
+    comptime param: Param(Id),
+    comptime value_parsers: anytype,
+    allocator: mem.Allocator,
+    arguments: anytype,
+    positionals: anytype,
+    arg: streaming.Arg(Id),
+) !void {
+    const parser = comptime switch (param.takes_value) {
+        .none => undefined,
+        .one, .many => @field(value_parsers, param.id.value()),
+    };
+
+    const longest = comptime param.names.longest();
+    const name = longest.name[0..longest.name.len].*;
+    switch (longest.kind) {
+        .short, .long => switch (param.takes_value) {
+            .none => @field(arguments, &name) +|= 1,
+            .one => @field(arguments, &name) = try parser(arg.value.?),
+            .many => {
+                const value = try parser(arg.value.?);
+                try @field(arguments, &name).append(allocator, value);
+            },
+        },
+        .positional => try positionals.append(try parser(arg.value.?)),
+    }
 }
 
 /// The result of `parseEx`. Is owned by the caller and should be freed with `deinit`.
@@ -803,46 +815,23 @@ pub fn ResultEx(
 ) type {
     return struct {
         args: Arguments(Id, params, value_parsers, .slice),
-        positionals: Positionals(Id, params, value_parsers, .slice),
-        allocator: std.mem.Allocator,
+        positionals: []const FindPositionalType(Id, params, value_parsers),
+        allocator: mem.Allocator,
 
         pub fn deinit(result: *@This()) void {
-            deinitArgs(&result.args, result.allocator);
-            deinitPositionals(&result.positionals, result.allocator);
+            deinitArgs(Id, params, result.allocator, &result.args);
+            result.allocator.free(result.positionals);
         }
     };
 }
 
-fn Positionals(
+fn FindPositionalType(
     comptime Id: type,
     comptime params: []const Param(Id),
     comptime value_parsers: anytype,
-    comptime multi_arg_kind: MultiArgKind,
 ) type {
-    const pos = findPositional(Id, params) orelse return ?void;
-    const T = ParamType(Id, pos, value_parsers);
-    if (pos.takes_value == .many)
-        return switch (multi_arg_kind) {
-            .slice => []const T,
-            .list => std.ArrayListUnmanaged(T),
-        };
-
-    return ?T;
-}
-
-fn initPositionals(comptime T: type) T {
-    return switch (@typeInfo(T)) {
-        .optional => null,
-        else => .{},
-    };
-}
-
-fn deinitPositionals(positionals: anytype, allocator: std.mem.Allocator) void {
-    switch (@typeInfo(@TypeOf(positionals.*))) {
-        .optional => {},
-        .@"struct" => positionals.deinit(allocator),
-        else => allocator.free(positionals.*),
-    }
+    const pos = findPositional(Id, params) orelse return []const u8;
+    return ParamType(Id, pos, value_parsers);
 }
 
 fn findPositional(comptime Id: type, params: []const Param(Id)) ?Param(Id) {
@@ -871,12 +860,26 @@ fn ParamType(
 
 /// Deinitializes a struct of type `Argument`. Since the `Argument` type is generated, and we
 /// cannot add the deinit declaration to it, we declare it here instead.
-fn deinitArgs(arguments: anytype, allocator: std.mem.Allocator) void {
-    inline for (@typeInfo(@TypeOf(arguments.*)).@"struct".fields) |field| {
-        switch (@typeInfo(field.type)) {
-            .int, .optional => {},
-            .@"struct" => @field(arguments, field.name).deinit(allocator),
-            else => allocator.free(@field(arguments, field.name)),
+fn deinitArgs(
+    comptime Id: type,
+    comptime params: []const Param(Id),
+    allocator: mem.Allocator,
+    arguments: anytype,
+) void {
+    inline for (params) |param| {
+        const longest = comptime param.names.longest();
+        if (longest.kind == .positional)
+            continue;
+        if (param.takes_value != .many)
+            continue;
+
+        const field = @field(arguments, longest.name);
+
+        // If the multi value field is a struct, we know it is a list and should be deinited.
+        // Otherwise, it is a slice that should be freed.
+        switch (@typeInfo(@TypeOf(field))) {
+            .Struct => @field(arguments, longest.name).deinit(allocator),
+            else => allocator.free(@field(arguments, longest.name)),
         }
     }
 }
@@ -900,7 +903,7 @@ fn Arguments(
         fields_len += 1;
     }
 
-    var fields: [fields_len]std.builtin.Type.StructField = undefined;
+    var fields: [fields_len]builtin.Type.StructField = undefined;
     var i: usize = 0;
     for (params) |param| {
         const longest = param.names.longest();
@@ -928,7 +931,7 @@ fn Arguments(
         i += 1;
     }
 
-    return @Type(.{ .@"struct" = .{
+    return @Type(.{ .Struct = .{
         .layout = .auto,
         .fields = &fields,
         .decls = &.{},
@@ -947,64 +950,9 @@ test "str and u64" {
         .args = &.{ "--num", "10", "--str", "cooley_rec_inp_ptr" },
     };
     var res = try parseEx(Help, &params, parsers.default, &iter, .{
-        .allocator = std.testing.allocator,
+        .allocator = testing.allocator,
     });
     defer res.deinit();
-}
-
-test "different assignment separators" {
-    const params = comptime parseParamsComptime(
-        \\-a, --aa <usize>...
-        \\
-    );
-
-    var iter = args.SliceIterator{
-        .args = &.{ "-a=0", "--aa=1", "-a:2", "--aa:3" },
-    };
-    var res = try parseEx(Help, &params, parsers.default, &iter, .{
-        .allocator = std.testing.allocator,
-        .assignment_separators = "=:",
-    });
-    defer res.deinit();
-
-    try std.testing.expectEqualSlices(usize, &.{ 0, 1, 2, 3 }, res.args.aa);
-}
-
-test "single positional" {
-    const params = comptime parseParamsComptime(
-        \\<str>
-        \\
-    );
-
-    {
-        var iter = args.SliceIterator{ .args = &.{} };
-        var res = try parseEx(Help, &params, parsers.default, &iter, .{
-            .allocator = std.testing.allocator,
-        });
-        defer res.deinit();
-
-        try std.testing.expect(res.positionals == null);
-    }
-
-    {
-        var iter = args.SliceIterator{ .args = &.{"a"} };
-        var res = try parseEx(Help, &params, parsers.default, &iter, .{
-            .allocator = std.testing.allocator,
-        });
-        defer res.deinit();
-
-        try std.testing.expectEqualStrings("a", res.positionals.?);
-    }
-
-    {
-        var iter = args.SliceIterator{ .args = &.{ "a", "b" } };
-        var res = try parseEx(Help, &params, parsers.default, &iter, .{
-            .allocator = std.testing.allocator,
-        });
-        defer res.deinit();
-
-        try std.testing.expectEqualStrings("b", res.positionals.?);
-    }
 }
 
 test "everything" {
@@ -1014,7 +962,7 @@ test "everything" {
         \\-c, --cc <str>
         \\-d, --dd <usize>...
         \\-h
-        \\<str>...
+        \\<str>
         \\
     );
 
@@ -1022,48 +970,17 @@ test "everything" {
         .args = &.{ "-a", "--aa", "-c", "0", "something", "-d", "1", "--dd", "2", "-h" },
     };
     var res = try parseEx(Help, &params, parsers.default, &iter, .{
-        .allocator = std.testing.allocator,
+        .allocator = testing.allocator,
     });
     defer res.deinit();
 
-    try std.testing.expect(res.args.aa == 2);
-    try std.testing.expect(res.args.bb == 0);
-    try std.testing.expect(res.args.h == 1);
-    try std.testing.expectEqualStrings("0", res.args.cc.?);
-    try std.testing.expectEqual(@as(usize, 1), res.positionals.len);
-    try std.testing.expectEqualStrings("something", res.positionals[0]);
-    try std.testing.expectEqualSlices(usize, &.{ 1, 2 }, res.args.dd);
-    try std.testing.expectEqual(@as(usize, 10), iter.index);
-}
-
-test "terminating positional" {
-    const params = comptime parseParamsComptime(
-        \\-a, --aa
-        \\-b, --bb
-        \\-c, --cc <str>
-        \\-d, --dd <usize>...
-        \\-h
-        \\<str>...
-        \\
-    );
-
-    var iter = args.SliceIterator{
-        .args = &.{ "-a", "--aa", "-c", "0", "something", "-d", "1", "--dd", "2", "-h" },
-    };
-    var res = try parseEx(Help, &params, parsers.default, &iter, .{
-        .allocator = std.testing.allocator,
-        .terminating_positional = 0,
-    });
-    defer res.deinit();
-
-    try std.testing.expect(res.args.aa == 2);
-    try std.testing.expect(res.args.bb == 0);
-    try std.testing.expect(res.args.h == 0);
-    try std.testing.expectEqualStrings("0", res.args.cc.?);
-    try std.testing.expectEqual(@as(usize, 1), res.positionals.len);
-    try std.testing.expectEqualStrings("something", res.positionals[0]);
-    try std.testing.expectEqualSlices(usize, &.{}, res.args.dd);
-    try std.testing.expectEqual(@as(usize, 5), iter.index);
+    try testing.expect(res.args.aa == 2);
+    try testing.expect(res.args.bb == 0);
+    try testing.expect(res.args.h == 1);
+    try testing.expectEqualStrings("0", res.args.cc.?);
+    try testing.expectEqual(@as(usize, 1), res.positionals.len);
+    try testing.expectEqualStrings("something", res.positionals[0]);
+    try testing.expectEqualSlices(usize, &.{ 1, 2 }, res.args.dd);
 }
 
 test "overflow-safe" {
@@ -1077,7 +994,7 @@ test "overflow-safe" {
 
     // This just needs to not crash
     var res = try parseEx(Help, &params, parsers.default, &iter, .{
-        .allocator = std.testing.allocator,
+        .allocator = testing.allocator,
     });
     defer res.deinit();
 }
@@ -1085,7 +1002,7 @@ test "overflow-safe" {
 test "empty" {
     var iter = args.SliceIterator{ .args = &.{} };
     var res = try parseEx(u8, &[_]Param(u8){}, parsers.default, &iter, .{
-        .allocator = std.testing.allocator,
+        .allocator = testing.allocator,
     });
     defer res.deinit();
 }
@@ -1098,17 +1015,17 @@ fn testErr(
     var diag = Diagnostic{};
     var iter = args.SliceIterator{ .args = args_strings };
     _ = parseEx(Help, params, parsers.default, &iter, .{
-        .allocator = std.testing.allocator,
+        .allocator = testing.allocator,
         .diagnostic = &diag,
     }) catch |err| {
         var buf: [1024]u8 = undefined;
-        var fbs = std.io.fixedBufferStream(&buf);
+        var fbs = io.fixedBufferStream(&buf);
         diag.report(fbs.writer(), err) catch return error.TestFailed;
-        try std.testing.expectEqualStrings(expected, fbs.getWritten());
+        try testing.expectEqualStrings(expected, fbs.getWritten());
         return;
     };
 
-    try std.testing.expect(false);
+    try testing.expect(false);
 }
 
 test "errors" {
@@ -1213,10 +1130,10 @@ pub fn help(
     const max_spacing = blk: {
         var res: usize = 0;
         for (params) |param| {
-            var cs = ccw.codepointCountingWriter(std.io.null_writer);
+            var cs = io.countingWriter(io.null_writer);
             try printParam(cs.writer(), Id, param);
-            if (res < cs.codepoints_written)
-                res = @intCast(cs.codepoints_written);
+            if (res < cs.bytes_written)
+                res = @intCast(cs.bytes_written);
         }
 
         break :blk res;
@@ -1226,22 +1143,22 @@ pub fn help(
         opt.description_indent +
         max_spacing * @intFromBool(!opt.description_on_new_line);
 
-    var first_parameter: bool = true;
+    var first_paramter: bool = true;
     for (params) |param| {
-        if (!first_parameter)
+        if (!first_paramter)
             try writer.writeByteNTimes('\n', opt.spacing_between_parameters);
 
-        first_parameter = false;
+        first_paramter = false;
         try writer.writeByteNTimes(' ', opt.indent);
 
-        var cw = ccw.codepointCountingWriter(writer);
+        var cw = io.countingWriter(writer);
         try printParam(cw.writer(), Id, param);
 
         const Writer = DescriptionWriter(@TypeOf(writer));
         var description_writer = Writer{
             .underlying_writer = writer,
             .indentation = description_indentation,
-            .printed_chars = @intCast(cw.codepoints_written),
+            .printed_chars = @intCast(cw.bytes_written),
             .max_width = opt.max_width,
         };
 
@@ -1253,9 +1170,9 @@ pub fn help(
 
             var first_line = true;
             var res: usize = std.math.maxInt(usize);
-            var it = std.mem.tokenizeScalar(u8, description, '\n');
+            var it = mem.tokenizeScalar(u8, description, '\n');
             while (it.next()) |line| : (first_line = false) {
-                const trimmed = std.mem.trimLeft(u8, line, " ");
+                const trimmed = mem.trimLeft(u8, line, " ");
                 const indent = line.len - trimmed.len;
 
                 // If the first line has no indentation, then we ignore the indentation of the
@@ -1278,18 +1195,18 @@ pub fn help(
         };
 
         const description = param.id.description();
-        var it = std.mem.splitScalar(u8, description, '\n');
+        var it = mem.splitScalar(u8, description, '\n');
         var first_line = true;
         var non_emitted_newlines: usize = 0;
         var last_line_indentation: usize = 0;
         while (it.next()) |raw_line| : (first_line = false) {
             // First line might be special. See comment above.
-            const indented_line = if (first_line and !std.mem.startsWith(u8, raw_line, " "))
+            const indented_line = if (first_line and !mem.startsWith(u8, raw_line, " "))
                 raw_line
             else
                 raw_line[@min(min_description_indent, raw_line.len)..];
 
-            const line = std.mem.trimLeft(u8, indented_line, " ");
+            const line = mem.trimLeft(u8, indented_line, " ");
             if (line.len == 0) {
                 non_emitted_newlines += 1;
                 continue;
@@ -1304,7 +1221,7 @@ pub fn help(
                 const does_not_have_same_indent_as_last_line =
                     line_indentation != last_line_indentation;
 
-                const starts_with_control_char = std.mem.indexOfScalar(u8, "=*", line[0]) != null;
+                const starts_with_control_char = mem.indexOfScalar(u8, "=*", line[0]) != null;
 
                 // Either the input contains 2 or more newlines, in which case we should start
                 // a new paragraph.
@@ -1320,11 +1237,12 @@ pub fn help(
             } else {
                 // For none markdown like format, we just respect the newlines in the input
                 // string and output them as is.
-                for (0..non_emitted_newlines) |_|
+                var i: usize = 0;
+                while (i < non_emitted_newlines) : (i += 1)
                     try description_writer.newline();
             }
 
-            var words = std.mem.tokenizeScalar(u8, line, ' ');
+            var words = mem.tokenizeScalar(u8, line, ' ');
             while (words.next()) |word|
                 try description_writer.writeWord(word);
 
@@ -1348,10 +1266,10 @@ fn DescriptionWriter(comptime UnderlyingWriter: type) type {
         printed_chars: usize,
 
         pub fn writeWord(writer: *@This(), word: []const u8) !void {
-            std.debug.assert(word.len != 0);
+            debug.assert(word.len != 0);
 
             var first_word = writer.printed_chars <= writer.indentation;
-            const chars_to_write = try std.unicode.utf8CountCodepoints(word) + @intFromBool(!first_word);
+            const chars_to_write = word.len + @intFromBool(!first_word);
             if (chars_to_write + writer.printed_chars > writer.max_width) {
                 // If the word does not fit on this line, then we insert a new line and print
                 // it on that line. The only exception to this is if this was the first word.
@@ -1418,13 +1336,13 @@ fn printParam(
 }
 
 fn testHelp(opt: HelpOptions, str: []const u8) !void {
-    const params = try parseParams(std.testing.allocator, str);
-    defer std.testing.allocator.free(params);
+    const params = try parseParams(testing.allocator, str);
+    defer testing.allocator.free(params);
 
     var buf: [2048]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
+    var fbs = io.fixedBufferStream(&buf);
     try help(fbs.writer(), Help, params, opt);
-    try std.testing.expectEqualStrings(str, fbs.getWritten());
+    try testing.expectEqualStrings(str, fbs.getWritten());
 }
 
 test "clap.help" {
@@ -1803,50 +1721,6 @@ test "clap.help" {
         \\-d, --dd <V3>...    Both repeated option.
         \\
     );
-
-    // Test with multibyte characters.
-    try testHelp(.{
-        .indent = 0,
-        .max_width = 46,
-        .description_on_new_line = false,
-        .description_indent = 4,
-        .spacing_between_parameters = 2,
-    },
-        \\-a                  Shört flåg.
-        \\
-        \\
-        \\-b <V1>             Shört öptiön.
-        \\
-        \\
-        \\    --aa            Löng fläg.
-        \\
-        \\
-        \\    --bb <V2>       Löng öptiön.
-        \\
-        \\
-        \\-c, --cc            Bóth fläg.
-        \\
-        \\
-        \\    --complicate    Fläg wíth ä cömplǐcätéd
-        \\                    änd vërý löng dèscrıptıön
-        \\                    thät späns mültíplë
-        \\                    lınēs.
-        \\
-        \\                    Pärägräph number 2:
-        \\                    * Bullet pöint
-        \\                    * Bullet pöint
-        \\
-        \\                    Exämple:
-        \\                        sömething sömething
-        \\                        sömething
-        \\
-        \\
-        \\-d, --dd <V3>       Böth öptiön.
-        \\
-        \\
-        \\-d, --dd <V3>...    Böth repeäted öptiön.
-        \\
-    );
 }
 
 /// Will print a usage message in the following format:
@@ -1855,18 +1729,18 @@ test "clap.help" {
 /// First all none value taking parameters, which have a short name are printed, then non
 /// positional parameters and finally the positional.
 pub fn usage(stream: anytype, comptime Id: type, params: []const Param(Id)) !void {
-    var cos = ccw.codepointCountingWriter(stream);
+    var cos = io.countingWriter(stream);
     const cs = cos.writer();
     for (params) |param| {
         const name = param.names.short orelse continue;
         if (param.takes_value != .none)
             continue;
 
-        if (cos.codepoints_written == 0)
+        if (cos.bytes_written == 0)
             try stream.writeAll("[-");
         try cs.writeByte(name);
     }
-    if (cos.codepoints_written != 0)
+    if (cos.bytes_written != 0)
         try cs.writeAll("]");
 
     var has_positionals: bool = false;
@@ -1885,7 +1759,7 @@ pub fn usage(stream: anytype, comptime Id: type, params: []const Param(Id)) !voi
             continue;
         };
 
-        if (cos.codepoints_written != 0)
+        if (cos.bytes_written != 0)
             try cs.writeAll(" ");
 
         try cs.writeAll("[");
@@ -1909,7 +1783,7 @@ pub fn usage(stream: anytype, comptime Id: type, params: []const Param(Id)) !voi
         if (param.names.short != null or param.names.long != null)
             continue;
 
-        if (cos.codepoints_written != 0)
+        if (cos.bytes_written != 0)
             try cs.writeAll(" ");
 
         try cs.writeAll("<");
@@ -1922,9 +1796,9 @@ pub fn usage(stream: anytype, comptime Id: type, params: []const Param(Id)) !voi
 
 fn testUsage(expected: []const u8, params: []const Param(Help)) !void {
     var buf: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
+    var fbs = io.fixedBufferStream(&buf);
     try usage(fbs.writer(), Help, params);
-    try std.testing.expectEqualStrings(expected, fbs.getWritten());
+    try testing.expectEqualStrings(expected, fbs.getWritten());
 }
 
 test "usage" {
@@ -1986,17 +1860,3 @@ test "usage" {
         \\
     ));
 }
-
-test {
-    _ = args;
-    _ = parsers;
-    _ = streaming;
-    _ = ccw;
-}
-
-pub const args = @import("args.zig");
-pub const parsers = @import("parsers.zig");
-pub const streaming = @import("streaming.zig");
-pub const ccw = @import("codepoint_counting_writer.zig");
-
-const std = @import("std");

@@ -1,3 +1,15 @@
+const builtin = @import("builtin");
+const clap = @import("../clap.zig");
+const std = @import("std");
+
+const args = clap.args;
+const debug = std.debug;
+const heap = std.heap;
+const io = std.io;
+const mem = std.mem;
+const os = std.os;
+const testing = std.testing;
+
 /// The result returned from Clap.next
 pub fn Arg(comptime Id: type) type {
     return struct {
@@ -32,14 +44,11 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
             };
         };
 
-        state: State = .normal,
-
         params: []const clap.Param(Id),
         iter: *ArgIterator,
-
+        state: State = .normal,
         positional: ?*const clap.Param(Id) = null,
         diagnostic: ?*clap.Diagnostic = null,
-        assignment_separators: []const u8 = clap.default_assignment_separators,
 
         /// Get the next Arg that matches a Param.
         pub fn next(parser: *@This()) !?Arg(Id) {
@@ -59,14 +68,14 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
             const arg = arg_info.arg;
             switch (arg_info.kind) {
                 .long => {
-                    const eql_index = std.mem.indexOfAny(u8, arg, parser.assignment_separators);
+                    const eql_index = mem.indexOfScalar(u8, arg, '=');
                     const name = if (eql_index) |i| arg[0..i] else arg;
                     const maybe_value = if (eql_index) |i| arg[i + 1 ..] else null;
 
                     for (parser.params) |*param| {
                         const match = param.names.long orelse continue;
 
-                        if (!std.mem.eql(u8, name, match))
+                        if (!mem.eql(u8, name, match))
                             continue;
                         if (param.takes_value == .none) {
                             if (maybe_value != null)
@@ -96,7 +105,7 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
                     // If we find a positional with the value `--` then we
                     // interpret the rest of the arguments as positional
                     // arguments.
-                    if (std.mem.eql(u8, arg, "--")) {
+                    if (mem.eql(u8, arg, "--")) {
                         parser.state = .rest_are_positional;
                         const value = parser.iter.next() orelse return null;
                         return Arg(Id){ .param = param, .value = value };
@@ -133,13 +142,9 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
                     }
                 }
 
-                const next_is_separator = if (next_index < arg.len)
-                    std.mem.indexOfScalar(u8, parser.assignment_separators, arg[next_index]) != null
-                else
-                    false;
-
+                const next_is_eql = if (next_index < arg.len) arg[next_index] == '=' else false;
                 if (param.takes_value == .none) {
-                    if (next_is_separator)
+                    if (next_is_eql)
                         return parser.err(arg, .{ .short = short }, Error.DoesntTakeValue);
                     return Arg(Id){ .param = param };
                 }
@@ -151,7 +156,7 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
                     return Arg(Id){ .param = param, .value = value };
                 }
 
-                if (next_is_separator)
+                if (next_is_eql)
                     return Arg(Id){ .param = param, .value = arg[next_index + 1 ..] };
 
                 return Arg(Id){ .param = param, .value = arg[next_index..] };
@@ -188,11 +193,11 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
 
         fn parseNextArg(parser: *@This()) !?ArgInfo {
             const full_arg = parser.iter.next() orelse return null;
-            if (std.mem.eql(u8, full_arg, "--") or std.mem.eql(u8, full_arg, "-"))
+            if (mem.eql(u8, full_arg, "--") or mem.eql(u8, full_arg, "-"))
                 return ArgInfo{ .arg = full_arg, .kind = .positional };
-            if (std.mem.startsWith(u8, full_arg, "--"))
+            if (mem.startsWith(u8, full_arg, "--"))
                 return ArgInfo{ .arg = full_arg[2..], .kind = .long };
-            if (std.mem.startsWith(u8, full_arg, "-"))
+            if (mem.startsWith(u8, full_arg, "-"))
                 return ArgInfo{ .arg = full_arg[1..], .kind = .short };
 
             return ArgInfo{ .arg = full_arg, .kind = .positional };
@@ -206,41 +211,53 @@ pub fn Clap(comptime Id: type, comptime ArgIterator: type) type {
     };
 }
 
-fn expectArgs(
-    parser: *Clap(u8, clap.args.SliceIterator),
+fn testNoErr(
+    params: []const clap.Param(u8),
+    args_strings: []const []const u8,
     results: []const Arg(u8),
 ) !void {
+    var iter = args.SliceIterator{ .args = args_strings };
+    var c = Clap(u8, args.SliceIterator){
+        .params = params,
+        .iter = &iter,
+    };
+
     for (results) |res| {
-        const arg = (try parser.next()) orelse return error.TestFailed;
-        try std.testing.expectEqual(res.param, arg.param);
+        const arg = (try c.next()) orelse return error.TestFailed;
+        try testing.expectEqual(res.param, arg.param);
         const expected_value = res.value orelse {
-            try std.testing.expectEqual(@as(@TypeOf(arg.value), null), arg.value);
+            try testing.expectEqual(@as(@TypeOf(arg.value), null), arg.value);
             continue;
         };
         const actual_value = arg.value orelse return error.TestFailed;
-        try std.testing.expectEqualSlices(u8, expected_value, actual_value);
+        try testing.expectEqualSlices(u8, expected_value, actual_value);
     }
 
-    if (try parser.next()) |_|
+    if (try c.next()) |_|
         return error.TestFailed;
 }
 
-fn expectError(
-    parser: *Clap(u8, clap.args.SliceIterator),
+fn testErr(
+    params: []const clap.Param(u8),
+    args_strings: []const []const u8,
     expected: []const u8,
 ) !void {
-    var diag: clap.Diagnostic = .{};
-    parser.diagnostic = &diag;
-
-    while (parser.next() catch |err| {
+    var diag: clap.Diagnostic = undefined;
+    var iter = args.SliceIterator{ .args = args_strings };
+    var c = Clap(u8, args.SliceIterator){
+        .params = params,
+        .iter = &iter,
+        .diagnostic = &diag,
+    };
+    while (c.next() catch |err| {
         var buf: [1024]u8 = undefined;
-        var fbs = std.io.fixedBufferStream(&buf);
+        var fbs = io.fixedBufferStream(&buf);
         diag.report(fbs.writer(), err) catch return error.TestFailed;
-        try std.testing.expectEqualStrings(expected, fbs.getWritten());
+        try testing.expectEqualStrings(expected, fbs.getWritten());
         return;
     }) |_| {}
 
-    try std.testing.expect(false);
+    try testing.expect(false);
 }
 
 test "short params" {
@@ -264,28 +281,29 @@ test "short params" {
     const c = &params[2];
     const d = &params[3];
 
-    var iter = clap.args.SliceIterator{ .args = &.{
-        "-a", "-b",    "-ab",  "-ba",
-        "-c", "0",     "-c=0", "-ac",
-        "0",  "-ac=0", "-d=0",
-    } };
-    var parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-
-    try expectArgs(&parser, &.{
-        .{ .param = a },
-        .{ .param = b },
-        .{ .param = a },
-        .{ .param = b },
-        .{ .param = b },
-        .{ .param = a },
-        .{ .param = c, .value = "0" },
-        .{ .param = c, .value = "0" },
-        .{ .param = a },
-        .{ .param = c, .value = "0" },
-        .{ .param = a },
-        .{ .param = c, .value = "0" },
-        .{ .param = d, .value = "0" },
-    });
+    try testNoErr(
+        &params,
+        &.{
+            "-a", "-b",    "-ab",  "-ba",
+            "-c", "0",     "-c=0", "-ac",
+            "0",  "-ac=0", "-d=0",
+        },
+        &.{
+            .{ .param = a },
+            .{ .param = b },
+            .{ .param = a },
+            .{ .param = b },
+            .{ .param = b },
+            .{ .param = a },
+            .{ .param = c, .value = "0" },
+            .{ .param = c, .value = "0" },
+            .{ .param = a },
+            .{ .param = c, .value = "0" },
+            .{ .param = a },
+            .{ .param = c, .value = "0" },
+            .{ .param = d, .value = "0" },
+        },
+    );
 }
 
 test "long params" {
@@ -309,20 +327,21 @@ test "long params" {
     const cc = &params[2];
     const dd = &params[3];
 
-    var iter = clap.args.SliceIterator{ .args = &.{
-        "--aa",   "--bb",
-        "--cc",   "0",
-        "--cc=0", "--dd=0",
-    } };
-    var parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-
-    try expectArgs(&parser, &.{
-        .{ .param = aa },
-        .{ .param = bb },
-        .{ .param = cc, .value = "0" },
-        .{ .param = cc, .value = "0" },
-        .{ .param = dd, .value = "0" },
-    });
+    try testNoErr(
+        &params,
+        &.{
+            "--aa",   "--bb",
+            "--cc",   "0",
+            "--cc=0", "--dd=0",
+        },
+        &.{
+            .{ .param = aa },
+            .{ .param = bb },
+            .{ .param = cc, .value = "0" },
+            .{ .param = cc, .value = "0" },
+            .{ .param = dd, .value = "0" },
+        },
+    );
 }
 
 test "positional params" {
@@ -331,16 +350,14 @@ test "positional params" {
         .takes_value = .one,
     }};
 
-    var iter = clap.args.SliceIterator{ .args = &.{
-        "aa",
-        "bb",
-    } };
-    var parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-
-    try expectArgs(&parser, &.{
-        .{ .param = &params[0], .value = "aa" },
-        .{ .param = &params[0], .value = "bb" },
-    });
+    try testNoErr(
+        &params,
+        &.{ "aa", "bb" },
+        &.{
+            .{ .param = &params[0], .value = "aa" },
+            .{ .param = &params[0], .value = "bb" },
+        },
+    );
 }
 
 test "all params" {
@@ -366,66 +383,38 @@ test "all params" {
     const cc = &params[2];
     const positional = &params[3];
 
-    var iter = clap.args.SliceIterator{ .args = &.{
-        "-a",   "-b",    "-ab",    "-ba",
-        "-c",   "0",     "-c=0",   "-ac",
-        "0",    "-ac=0", "--aa",   "--bb",
-        "--cc", "0",     "--cc=0", "something",
-        "-",    "--",    "--cc=0", "-a",
-    } };
-    var parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-
-    try expectArgs(&parser, &.{
-        .{ .param = aa },
-        .{ .param = bb },
-        .{ .param = aa },
-        .{ .param = bb },
-        .{ .param = bb },
-        .{ .param = aa },
-        .{ .param = cc, .value = "0" },
-        .{ .param = cc, .value = "0" },
-        .{ .param = aa },
-        .{ .param = cc, .value = "0" },
-        .{ .param = aa },
-        .{ .param = cc, .value = "0" },
-        .{ .param = aa },
-        .{ .param = bb },
-        .{ .param = cc, .value = "0" },
-        .{ .param = cc, .value = "0" },
-        .{ .param = positional, .value = "something" },
-        .{ .param = positional, .value = "-" },
-        .{ .param = positional, .value = "--cc=0" },
-        .{ .param = positional, .value = "-a" },
-    });
-}
-
-test "different assignment separators" {
-    const params = [_]clap.Param(u8){
-        .{
-            .id = 0,
-            .names = .{ .short = 'a', .long = "aa" },
-            .takes_value = .one,
+    try testNoErr(
+        &params,
+        &.{
+            "-a",   "-b",    "-ab",    "-ba",
+            "-c",   "0",     "-c=0",   "-ac",
+            "0",    "-ac=0", "--aa",   "--bb",
+            "--cc", "0",     "--cc=0", "something",
+            "-",    "--",    "--cc=0", "-a",
         },
-    };
-
-    const aa = &params[0];
-
-    var iter = clap.args.SliceIterator{ .args = &.{
-        "-a=0", "--aa=0",
-        "-a:0", "--aa:0",
-    } };
-    var parser = Clap(u8, clap.args.SliceIterator){
-        .params = &params,
-        .iter = &iter,
-        .assignment_separators = "=:",
-    };
-
-    try expectArgs(&parser, &.{
-        .{ .param = aa, .value = "0" },
-        .{ .param = aa, .value = "0" },
-        .{ .param = aa, .value = "0" },
-        .{ .param = aa, .value = "0" },
-    });
+        &.{
+            .{ .param = aa },
+            .{ .param = bb },
+            .{ .param = aa },
+            .{ .param = bb },
+            .{ .param = bb },
+            .{ .param = aa },
+            .{ .param = cc, .value = "0" },
+            .{ .param = cc, .value = "0" },
+            .{ .param = aa },
+            .{ .param = cc, .value = "0" },
+            .{ .param = aa },
+            .{ .param = cc, .value = "0" },
+            .{ .param = aa },
+            .{ .param = bb },
+            .{ .param = cc, .value = "0" },
+            .{ .param = cc, .value = "0" },
+            .{ .param = positional, .value = "something" },
+            .{ .param = positional, .value = "-" },
+            .{ .param = positional, .value = "--cc=0" },
+            .{ .param = positional, .value = "-a" },
+        },
+    );
 }
 
 test "errors" {
@@ -440,39 +429,16 @@ test "errors" {
             .takes_value = .one,
         },
     };
-
-    var iter = clap.args.SliceIterator{ .args = &.{"q"} };
-    var parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-    try expectError(&parser, "Invalid argument 'q'\n");
-
-    iter = clap.args.SliceIterator{ .args = &.{"-q"} };
-    parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-    try expectError(&parser, "Invalid argument '-q'\n");
-
-    iter = clap.args.SliceIterator{ .args = &.{"--q"} };
-    parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-    try expectError(&parser, "Invalid argument '--q'\n");
-
-    iter = clap.args.SliceIterator{ .args = &.{"--q=1"} };
-    parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-    try expectError(&parser, "Invalid argument '--q'\n");
-
-    iter = clap.args.SliceIterator{ .args = &.{"-a=1"} };
-    parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-    try expectError(&parser, "The argument '-a' does not take a value\n");
-
-    iter = clap.args.SliceIterator{ .args = &.{"--aa=1"} };
-    parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-    try expectError(&parser, "The argument '--aa' does not take a value\n");
-
-    iter = clap.args.SliceIterator{ .args = &.{"-c"} };
-    parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-    try expectError(&parser, "The argument '-c' requires a value but none was supplied\n");
-
-    iter = clap.args.SliceIterator{ .args = &.{"--cc"} };
-    parser = Clap(u8, clap.args.SliceIterator){ .params = &params, .iter = &iter };
-    try expectError(&parser, "The argument '--cc' requires a value but none was supplied\n");
+    try testErr(&params, &.{"q"}, "Invalid argument 'q'\n");
+    try testErr(&params, &.{"-q"}, "Invalid argument '-q'\n");
+    try testErr(&params, &.{"--q"}, "Invalid argument '--q'\n");
+    try testErr(&params, &.{"--q=1"}, "Invalid argument '--q'\n");
+    try testErr(&params, &.{"-a=1"}, "The argument '-a' does not take a value\n");
+    try testErr(&params, &.{"--aa=1"}, "The argument '--aa' does not take a value\n");
+    try testErr(&params, &.{"-c"}, "The argument '-c' requires a value but none was supplied\n");
+    try testErr(
+        &params,
+        &.{"--cc"},
+        "The argument '--cc' requires a value but none was supplied\n",
+    );
 }
-
-const clap = @import("../clap.zig");
-const std = @import("std");

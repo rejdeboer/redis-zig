@@ -1,0 +1,4 @@
+[submodule "zig-clap"]
+	path = lib/zig-clap
+	url = https://github.com/Hejsil/zig-clap
+	branch = release-0.9.1

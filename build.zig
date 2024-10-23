@@ -66,6 +66,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_exe_tests.step);
 
     // MODULES
-    const clap_lib = b.addModule("clap", .{ .root_source_file = .{ .cwd_relative = "lib/clap/clap.zig" } });
+    const clap_lib = b.addModule("clap", .{ .root_source_file = .{ .cwd_relative = "lib/zig-clap/clap.zig" } });
     exe.root_module.addImport("clap", clap_lib);
 }
