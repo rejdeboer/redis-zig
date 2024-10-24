@@ -10,19 +10,19 @@ pub const Settings = struct {
     port: u16 = 6379,
     bind: []const u8 = "127.0.0.1",
     maxclients: u16 = 10000,
-    dir: ?[]const u8 = null,
-    dbfilename: ?[]const u8 = null,
+    dir: []const u8 = "./",
+    dbfilename: []const u8 = "dump.rdb",
 
     const Self = @This();
 
     pub fn init(gpa: std.mem.Allocator) !Self {
         const params = comptime clap.parseParamsComptime(
             \\-h, --help             Display this help and exit. For a complete overview go to https://raw.githubusercontent.com/redis/redis/7.4/redis.conf.
-            \\-p, --port <u16>       The listening port.
-            \\-b, --bind <str>       The host to bind to.
-            \\--maxclients <u16>     The maximum amount of clients that can connect simultaneously.
-            \\--dir <str>            The directory where the RDB file will be stored.
-            \\--dbfilename <str>     The name of the RDB file.
+            \\-p, --port <u16>       The listening port. Default is 6379.
+            \\-b, --bind <str>       The host to bind to. Default is 127.0.0.1.
+            \\--maxclients <u16>     The maximum amount of clients that can connect simultaneously. Default is 10000
+            \\--dir <str>            The directory where the RDB file will be stored. Default is "./".
+            \\--dbfilename <str>     The name of the RDB file. Default is dump.rdb.
             \\<str>                  An optional Redis config file
         );
 
