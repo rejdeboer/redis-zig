@@ -1,5 +1,5 @@
 const std = @import("std");
-const server = @import("server.zig");
+const Server = @import("server.zig").Server;
 const configuration = @import("configuration.zig");
 
 pub fn main() !void {
@@ -11,10 +11,10 @@ pub fn main() !void {
         configuration.ConfigError.HelpRequested => return,
         else => return err,
     };
-    defer settings.deinit(gpa);
+    defer settings.deinit();
 
-    var s = try server.Server.init(settings, gpa);
-    try s.run();
+    var server = try Server.init(settings, gpa);
+    try server.run();
 }
 
 test {
