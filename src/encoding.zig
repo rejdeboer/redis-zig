@@ -24,22 +24,49 @@ pub const ListEncoder = struct {
     }
 };
 
-pub inline fn encode(buf: []const u8, comptime T: type, value: T) std.fmt.BufPrintError!void {
+pub fn encode(buf: []const u8, comptime T: type, value: T) std.fmt.BufPrintError!void {
     return switch (@typeInfo(T)) {
         .Int => try encode_int(buf, value),
+        .Bool => try encode_bool(buf, value),
+        .Float => try encode_float(buf, value),
         .Pointer => try encode_bulk_string(buf, value),
         else => std.log.err("unexpected encoding type {any}", .{T}),
     };
 }
 
-pub inline fn encode_bulk_string(buf: []const u8, value: []const u8) std.fmt.BufPrintError!usize {
-    return try std.fmt.bufPrint(&buf, "${d}\r\n{s}\r\n", .{ value.len, value });
+pub fn encode_bulk_string(buf: []const u8, value: []const u8) std.fmt.BufPrintError!usize {
+    const res = try std.fmt.bufPrint(&buf, "${d}\r\n{s}\r\n", .{ value.len, value });
+    return res.len;
 }
 
-pub inline fn encode_int(buf: []const u8, value: comptime_int) std.fmt.BufPrintError!usize {
-    return try std.fmt.bufPrint(&buf, ":{d}\r\n", .{value});
+pub fn encode_simple_string(buf: []const u8, value: []const u8) std.fmt.BufPrintError!usize {
+    const res = try std.fmt.bufPrint(&buf, "+{s}\r\n", .{value});
+    return res.len;
 }
 
-pub inline fn encode_bool(buf: []const u8, value: bool) std.fmt.BufPrintError!usize {
-    return try std.fmt.bufPrint(&buf, "#{s}\r\n", .{if (value) "t" else "f"});
+pub fn encode_err(buf: []const u8, value: []const u8) std.fmt.BufPrintError!usize {
+    const res = try std.fmt.bufPrint(&buf, "-{s}\r\n", .{value});
+    return res.len;
+}
+
+pub fn encode_int(buf: []const u8, value: comptime_int) std.fmt.BufPrintError!usize {
+    const res = try std.fmt.bufPrint(&buf, ":{d}\r\n", .{value});
+    return res.len;
+}
+
+pub fn encode_float(buf: []const u8, value: comptime_float) std.fmt.BufPrintError!usize {
+    const res = try std.fmt.bufPrint(&buf, ",{d}\r\n", .{value});
+    return res.len;
+}
+
+pub fn encode_bool(buf: []const u8, value: bool) std.fmt.BufPrintError!usize {
+    const res = try std.fmt.bufPrint(&buf, "#{s}\r\n", .{if (value) "t" else "f"});
+    return res.len;
+}
+
+test "bool true" {
+    var buf: [10]u8 = undefined;
+    const len = try encode_bool(&buf, true);
+    try std.testing.expect(len == 5);
+    try std.testing.expect(std.mem.eql(u8, "#t\r\n", buf[0..len]));
 }
