@@ -18,13 +18,24 @@ pub const ListEncoder = struct {
         self.size += 1;
     }
 
-    // TODO: This won't work
-    pub fn write_size(self: *Self) std.fmt.BufPrintError!void {
-        try std.fmt.bufPrint(&self.buf, "*{d}\r\n{s}", .{ self.size, self.buf });
+    pub fn write_length(self: *Self) std.fmt.BufPrintError!void {
+        var digits: usize = 0;
+        const size = self.size;
+        while (self.size > 0) {
+            digits += 1;
+            self.size /= 10;
+        }
+        // * and \r\n
+        const list_encoding_length = digits + 3;
+        while (self.index > 0) {
+            self.index -= 1;
+            self.buf[self.index + list_encoding_length] = self.buf[self.index];
+        }
+        _ = try std.fmt.bufPrint(self.buf, "*{d}\r\n", .{size});
     }
 };
 
-pub fn encode(buf: []u8, comptime T: type, value: T) std.fmt.BufPrintError!void {
+pub fn encode(buf: []u8, comptime T: type, value: T) std.fmt.BufPrintError!usize {
     return switch (@typeInfo(T)) {
         .Int => try encode_int(buf, value),
         .Bool => try encode_bool(buf, value),
@@ -68,5 +79,36 @@ test "bool true" {
     var buf: [4]u8 = undefined;
     const len = try encode_bool(&buf, true);
     try std.testing.expect(len == 4);
-    try std.testing.expect(std.mem.eql(u8, "#t\r\n", buf[0..len]));
+    try std.testing.expect(std.mem.eql(u8, "#t\r\n", &buf));
+}
+
+test "bool false" {
+    var buf: [4]u8 = undefined;
+    const len = try encode_bool(&buf, false);
+    try std.testing.expect(len == 4);
+    try std.testing.expect(std.mem.eql(u8, "#f\r\n", &buf));
+}
+
+test "int" {
+    var buf: [4]u8 = undefined;
+    const len = try encode_int(&buf, 1);
+    try std.testing.expect(len == 4);
+    try std.testing.expect(std.mem.eql(u8, ":1\r\n", &buf));
+}
+
+test "float" {
+    var buf: [7]u8 = undefined;
+    const len = try encode_float(&buf, 1.23);
+    try std.testing.expect(len == 7);
+    try std.testing.expect(std.mem.eql(u8, ",1.23\r\n", &buf));
+}
+
+test "list single" {
+    var buf: [14]u8 = undefined;
+    var encoder = ListEncoder.init(&buf);
+    try encoder.add([]const u8, "TEST");
+    try std.testing.expect(encoder.size == 1);
+    try std.testing.expect(encoder.index == 10);
+    try encoder.write_length();
+    try std.testing.expect(std.mem.eql(u8, "*1\r\n$4\r\nTEST\r\n", &buf));
 }
