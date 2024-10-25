@@ -3,7 +3,7 @@ const std = @import("std");
 pub const ListEncoder = struct {
     buf: []u8,
     // NOTE: We start with index 4 to reserve a spot for the list size
-    index: usize = 4,
+    n_bytes: usize = 4,
     size: usize = 0,
 
     const Self = @This();
@@ -15,7 +15,7 @@ pub const ListEncoder = struct {
     }
 
     pub fn add(self: *Self, comptime T: type, value: T) std.fmt.BufPrintError!void {
-        self.index += try encode(self.buf[self.index..], T, value);
+        self.n_bytes += try encode(self.buf[self.n_bytes..], T, value);
         self.size += 1;
     }
 
@@ -29,10 +29,12 @@ pub const ListEncoder = struct {
         if (digits > 1) {
             // Shift the buffer to make space for the extra digits
             const extra_digits = digits - 1;
-            while (self.index > 4) {
-                self.index -= 1;
-                self.buf[self.index + extra_digits] = self.buf[self.index];
+            var i = self.n_bytes;
+            while (i > 4) {
+                i -= 1;
+                self.buf[i + extra_digits] = self.buf[i];
             }
+            self.n_bytes += extra_digits;
         }
         _ = try std.fmt.bufPrint(self.buf, "*{d}\r\n", .{self.size});
     }
@@ -44,7 +46,10 @@ pub fn encode(buf: []u8, comptime T: type, value: T) std.fmt.BufPrintError!usize
         .Bool => try encode_bool(buf, value),
         .Float => try encode_float(buf, value),
         .Pointer => try encode_bulk_string(buf, value),
-        else => std.log.err("unexpected encoding type {any}", .{T}),
+        else => {
+            std.log.err("unexpected encoding type {any}", .{T});
+            return 0;
+        },
     };
 }
 
@@ -111,7 +116,7 @@ test "list single" {
     var encoder = ListEncoder.init(&buf);
     try encoder.add([]const u8, "TEST");
     try std.testing.expect(encoder.size == 1);
-    try std.testing.expect(encoder.index == 14);
+    try std.testing.expect(encoder.n_bytes == 14);
     try encoder.write_length();
     try std.testing.expect(std.mem.eql(u8, "*1\r\n$4\r\nTEST\r\n", &buf));
 }
@@ -122,7 +127,7 @@ test "list multiple" {
     try encoder.add([]const u8, "FOO");
     try encoder.add([]const u8, "BAR");
     try std.testing.expect(encoder.size == 2);
-    try std.testing.expect(encoder.index == 22);
+    try std.testing.expect(encoder.n_bytes == 22);
     try encoder.write_length();
     try std.testing.expect(std.mem.eql(u8, "*2\r\n$3\r\nFOO\r\n$3\r\nBAR\r\n", &buf));
 }

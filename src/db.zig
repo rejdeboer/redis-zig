@@ -1,6 +1,7 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 const Settings = @import("configuration.zig").Settings;
+const encoding = @import("encoding.zig");
 
 pub const Database = struct {
     gpa: std.mem.Allocator,
@@ -40,5 +41,15 @@ pub const Database = struct {
         try self.storage.put(key, value);
     }
 
-    // pub fn get_config(self: *Self, key: []const u8)
+    pub fn encode_config_key(self: *Self, buf: []u8, key: []const u8) std.fmt.BufPrintError!usize {
+        var encoder = encoding.ListEncoder.init(buf);
+        inline for (std.meta.fields(@TypeOf(self.settings))) |f| {
+            if (std.mem.eql(u8, key, f.name)) {
+                try encoder.add([]const u8, key);
+                try encoder.add(f.type, @field(self.settings, f.name));
+            }
+        }
+        try encoder.write_length();
+        return encoder.n_bytes;
+    }
 };

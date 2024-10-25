@@ -77,7 +77,7 @@ pub const Connection = struct {
 
     pub fn handle_write(self: *Self) !void {
         while (self.wbuf_sent < self.wbuf_size) {
-            self.wbuf_sent += posix.write(self.fd, self.wbuf[self.wbuf_sent..]) catch |err| switch (err) {
+            self.wbuf_sent += posix.write(self.fd, self.wbuf[self.wbuf_sent..self.wbuf_size]) catch |err| switch (err) {
                 posix.WriteError.WouldBlock => return,
                 else => return err,
             };
@@ -111,12 +111,12 @@ pub const Connection = struct {
             .get => |key| {
                 std.log.info("getting value for key {s}", .{key});
                 if (self.db.get(key)) |entry| {
-                    self.write_value(entry.value) catch {
-                        self.write_error("UNEXPECTED ERROR");
+                    return self.write_value(entry.value) catch {
+                        std.log.err("wbuf too small", .{});
+                        return self.write_error("UNEXPECTED ERROR");
                     };
-                } else {
-                    self.write_error("KEY NOT FOUND");
                 }
+                return self.write_error("KEY NOT FOUND");
             },
             .set => |kv| {
                 self.db.put(kv.key, kv.entry) catch {
@@ -125,8 +125,18 @@ pub const Connection = struct {
                 };
                 self.write_simple_string("OK");
             },
-            .config_get => |_| {
-                self.write_error("TODO");
+            .config_get => |key| {
+                self.wbuf_size = self.db.encode_config_key(&self.wbuf, key) catch {
+                    std.log.err("wbuf too small", .{});
+                    return self.write_error("UNEXPECTED ERROR");
+                };
+                self.start_writing();
+            },
+            .command_docs => {
+                var encoder = encoding.ListEncoder.init(&self.wbuf);
+                encoder.write_length() catch unreachable;
+                self.wbuf_size = encoder.n_bytes;
+                self.start_writing();
             },
         }
     }
