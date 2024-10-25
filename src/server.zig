@@ -1,7 +1,7 @@
 const std = @import("std");
 const net = std.net;
 const posix = std.posix;
-const mem = @import("memory.zig");
+const Database = @import("db.zig").Database;
 const config = @import("configuration.zig");
 const Connection = @import("connection.zig").Connection;
 const DList = @import("dlist.zig").DList;
@@ -12,21 +12,20 @@ const READ_TIMEOUT_MS: i64 = 500;
 
 pub const Server = struct {
     gpa: std.mem.Allocator,
-    settings: config.Settings,
-    memory: mem.Memory,
+    db: Database,
     connections: std.AutoHashMap(c_int, *Connection),
     idle_list: DList = undefined,
 
     const Self = @This();
 
     pub fn init(settings: config.Settings, gpa: std.mem.Allocator) !Self {
-        const memory = mem.Memory.init(gpa);
+        const db = Database.init(settings, gpa);
         const connections = std.AutoHashMap(c_int, *Connection).init(gpa);
-        return Self{ .gpa = gpa, .settings = settings, .memory = memory, .connections = connections };
+        return Self{ .gpa = gpa, .db = db, .connections = connections };
     }
 
     pub fn deinit(self: *Self) void {
-        self.memory.deinit();
+        self.db.deinit();
         var iterator = self.connections.valueIterator();
         while (iterator.next()) |conn| {
             conn.deinit();
@@ -35,7 +34,7 @@ pub const Server = struct {
     }
 
     pub fn run(self: *Self) !void {
-        const address = try net.Address.resolveIp(self.settings.bind, self.settings.port);
+        const address = try net.Address.resolveIp(self.db.settings.bind, self.db.settings.port);
 
         // Create a TCP socket
         const fd = posix.socket(address.any.family, posix.SOCK.STREAM, 0) catch {
@@ -92,7 +91,7 @@ pub const Server = struct {
 
             // Check if listener is active and accept new connection
             if (poll_args.items[0].revents > 0) {
-                const conn = try Connection.init(fd, &self.memory, &self.idle_list, self.gpa);
+                const conn = try Connection.init(fd, &self.db, &self.idle_list, self.gpa);
                 try self.connections.put(conn.fd, conn);
                 std.log.info("client connected: {}", .{conn.fd});
             }

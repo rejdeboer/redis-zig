@@ -1,14 +1,16 @@
 const std = @import("std");
 const parser = @import("parser.zig");
+const Settings = @import("configuration.zig").Settings;
 
-pub const Memory = struct {
+pub const Database = struct {
     gpa: std.mem.Allocator,
+    settings: Settings,
     storage: std.StringHashMap(parser.RedisEntry),
 
     const Self = @This();
 
-    pub fn init(gpa: std.mem.Allocator) Self {
-        return Self{ .gpa = gpa, .storage = std.StringHashMap(parser.RedisEntry).init(gpa) };
+    pub fn init(settings: Settings, gpa: std.mem.Allocator) Self {
+        return Self{ .gpa = gpa, .settings = settings, .storage = std.StringHashMap(parser.RedisEntry).init(gpa) };
     }
 
     pub fn deinit(self: *Self) void {
@@ -37,4 +39,6 @@ pub const Memory = struct {
     pub fn put(self: *Self, key: []const u8, value: parser.RedisEntry) !void {
         try self.storage.put(key, value);
     }
+
+    // pub fn get_config(self: *Self, key: []const u8)
 };

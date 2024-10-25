@@ -1,6 +1,6 @@
 const std = @import("std");
 const posix = std.posix;
-const mem = @import("memory.zig");
+const Database = @import("db.zig").Database;
 const DList = @import("dlist.zig").DList;
 const parsing = @import("parser.zig");
 const encoding = @import("encoding.zig");
@@ -26,11 +26,11 @@ pub const Connection = struct {
     wbuf: [MAX_MESSAGE_SIZE]u8,
     idle_start_ms: i64,
     idle_list: DList,
-    memory: *mem.Memory,
+    db: *Database,
 
     const Self = @This();
 
-    pub fn init(listener_fd: i32, memory: *mem.Memory, server_idle_list: *DList, gpa: std.mem.Allocator) !*Self {
+    pub fn init(listener_fd: i32, db: *Database, server_idle_list: *DList, gpa: std.mem.Allocator) !*Self {
         const conn_fd = try posix.accept(listener_fd, null, null, posix.SOCK.CLOEXEC | posix.SOCK.NONBLOCK);
         const self = try gpa.create(Self);
         self.fd = conn_fd;
@@ -38,7 +38,7 @@ pub const Connection = struct {
         self.rbuf_size = 0;
         self.wbuf_sent = 0;
         self.idle_start_ms = std.time.milliTimestamp();
-        self.memory = memory;
+        self.db = db;
         self.gpa = gpa;
         server_idle_list.prepend(&self.idle_list);
         return self;
@@ -110,7 +110,7 @@ pub const Connection = struct {
             },
             .get => |key| {
                 std.log.info("getting value for key {s}", .{key});
-                if (self.memory.get(key)) |entry| {
+                if (self.db.get(key)) |entry| {
                     self.write_value(entry.value) catch {
                         self.write_error("UNEXPECTED ERROR");
                     };
@@ -119,7 +119,7 @@ pub const Connection = struct {
                 }
             },
             .set => |kv| {
-                self.memory.put(kv.key, kv.entry) catch {
+                self.db.put(kv.key, kv.entry) catch {
                     std.log.err("out of memory", .{});
                     return self.write_error("SET FAILED");
                 };
