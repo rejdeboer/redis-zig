@@ -2,7 +2,8 @@ const std = @import("std");
 
 pub const ListEncoder = struct {
     buf: []u8,
-    index: usize = 0,
+    // NOTE: We start with index 4 to reserve a spot for the list size
+    index: usize = 4,
     size: usize = 0,
 
     const Self = @This();
@@ -20,18 +21,20 @@ pub const ListEncoder = struct {
 
     pub fn write_length(self: *Self) std.fmt.BufPrintError!void {
         var digits: usize = 0;
-        const size = self.size;
-        while (self.size > 0) {
+        var size = self.size;
+        while (size > 0) {
             digits += 1;
-            self.size /= 10;
+            size /= 10;
         }
-        // * and \r\n
-        const list_encoding_length = digits + 3;
-        while (self.index > 0) {
-            self.index -= 1;
-            self.buf[self.index + list_encoding_length] = self.buf[self.index];
+        if (digits > 1) {
+            // Shift the buffer to make space for the extra digits
+            const extra_digits = digits - 1;
+            while (self.index > 4) {
+                self.index -= 1;
+                self.buf[self.index + extra_digits] = self.buf[self.index];
+            }
         }
-        _ = try std.fmt.bufPrint(self.buf, "*{d}\r\n", .{size});
+        _ = try std.fmt.bufPrint(self.buf, "*{d}\r\n", .{self.size});
     }
 };
 
@@ -108,7 +111,18 @@ test "list single" {
     var encoder = ListEncoder.init(&buf);
     try encoder.add([]const u8, "TEST");
     try std.testing.expect(encoder.size == 1);
-    try std.testing.expect(encoder.index == 10);
+    try std.testing.expect(encoder.index == 14);
     try encoder.write_length();
     try std.testing.expect(std.mem.eql(u8, "*1\r\n$4\r\nTEST\r\n", &buf));
+}
+
+test "list multiple" {
+    var buf: [22]u8 = undefined;
+    var encoder = ListEncoder.init(&buf);
+    try encoder.add([]const u8, "FOO");
+    try encoder.add([]const u8, "BAR");
+    try std.testing.expect(encoder.size == 2);
+    try std.testing.expect(encoder.index == 22);
+    try encoder.write_length();
+    try std.testing.expect(std.mem.eql(u8, "*2\r\n$3\r\nFOO\r\n$3\r\nBAR\r\n", &buf));
 }
