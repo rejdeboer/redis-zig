@@ -3,6 +3,7 @@ const posix = std.posix;
 const mem = @import("memory.zig");
 const DList = @import("dlist.zig").DList;
 const parsing = @import("parser.zig");
+const encoding = @import("encoding.zig");
 
 /// Note: This is just for convenience, the actual implementation has a limit of 512Mb
 const MAX_MESSAGE_SIZE: usize = 4096;
@@ -87,50 +88,78 @@ pub const Connection = struct {
     }
 
     pub fn timeout_read(self: *Self) void {
-        self.set_response("-INVALID ENCODING", .{});
+        self.write_error("INVALID ENCODING");
     }
 
     fn handle_command(self: *Self) void {
         var parser = parsing.Parser.init(self.rbuf[0..self.rbuf_size], self.gpa);
 
         const command = parser.parse_command() catch |err| switch (err) {
-            error.Unexpected => return self.set_response("-UNEXPECTED COMMAND\r\n", .{}),
+            error.Unexpected => return self.write_error("UNEXPECTED COMMAND"),
             error.EOF => return,
         };
         switch (command) {
             .ping => |msg| {
-                if (msg != null) {
-                    return self.set_response("${}\r\n{s}\r\n", .{ msg.?.len, msg.? });
+                if (msg) |m| {
+                    return self.write_bulk_string(m);
                 }
-                self.set_response("+PONG\r\n", .{});
+                self.write_simple_string("PONG");
             },
             .echo => |msg| {
-                self.set_response("${}\r\n{s}\r\n", .{ msg.len, msg });
+                self.write_bulk_string(msg);
             },
             .get => |key| {
                 std.log.info("getting value for key {s}", .{key});
                 if (self.memory.get(key)) |entry| {
-                    switch (entry.value) {
-                        .string => |v| self.set_response("${}\r\n{s}\r\n", .{ v.len, v }),
-                        .int => |v| self.set_response(":{}\r\n", .{v}),
-                        .boolean => |v| self.set_response("#{s}\r\n", .{if (v) "t" else "f"}),
-                        .float => |v| self.set_response(",{d}\r\n", .{v}),
-                    }
+                    self.write_value(entry.value) catch {
+                        self.write_error("UNEXPECTED ERROR");
+                    };
                 } else {
-                    self.set_response("-KEY NOT FOUND\r\n", .{});
+                    self.write_error("KEY NOT FOUND");
                 }
             },
             .set => |kv| {
                 self.memory.put(kv.key, kv.entry) catch {
                     std.log.err("out of memory", .{});
-                    return self.set_response("-SET FAILED\r\n", .{});
+                    return self.write_error("SET FAILED");
                 };
-                self.set_response("+OK\r\n", .{});
+                self.write_simple_string("OK");
             },
             .config_get => |_| {
-                self.set_response("-TODO\r\n", .{});
+                self.write_error("TODO");
             },
         }
+    }
+
+    fn write_error(self: *Self, err: []const u8) void {
+        self.wbuf_size = encoding.encode_err(&self.wbuf, err) catch unreachable;
+        self.start_writing();
+    }
+
+    fn write_simple_string(self: *Self, value: []const u8) void {
+        self.wbuf_size = encoding.encode_simple_string(&self.wbuf, value) catch unreachable;
+        self.start_writing();
+    }
+
+    fn write_bulk_string(self: *Self, value: []const u8) void {
+        self.wbuf_size = encoding.encode_bulk_string(&self.wbuf, value) catch unreachable;
+        self.start_writing();
+    }
+
+    fn write_value(self: *Self, value: parsing.RedisValue) !void {
+        self.wbuf_size = switch (value) {
+            .string => |v| try encoding.encode_bulk_string(&self.wbuf, v),
+            .int => |v| try encoding.encode_int(&self.wbuf, v),
+            .boolean => |v| try encoding.encode_bool(&self.wbuf, v),
+            .float => |v| try encoding.encode_float(&self.wbuf, v),
+        };
+        self.start_writing();
+    }
+
+    fn start_writing(self: *Self) void {
+        self.rbuf_size = 0;
+        self.state = .state_res;
+        self.handle_write() catch unreachable;
     }
 
     fn set_response(self: *Self, comptime format: []const u8, args: anytype) void {
