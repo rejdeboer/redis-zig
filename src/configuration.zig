@@ -105,7 +105,7 @@ fn merge_option(flags: anytype, option: []const u8, value: []const u8, allocator
         return;
     }
 
-    inline for (std.meta.fields(@TypeOf(flags.*))) |f| {
+    inline for (std.meta.fields(@TypeOf(flags.*))[1..]) |f| {
         if (std.mem.eql(u8, option, f.name)) {
             switch (@typeInfo(f.type)) {
                 // NOTE: We assume that every flag is optional

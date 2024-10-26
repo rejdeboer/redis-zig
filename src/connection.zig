@@ -98,6 +98,7 @@ pub const Connection = struct {
             error.Unexpected => return self.write_error("UNEXPECTED COMMAND"),
             error.EOF => return,
         };
+        defer self.start_writing();
         switch (command) {
             .ping => |msg| {
                 if (msg) |m| {
@@ -130,30 +131,29 @@ pub const Connection = struct {
                     std.log.err("wbuf too small", .{});
                     return self.write_error("UNEXPECTED ERROR");
                 };
-                self.start_writing();
+            },
+            .save => {
+                self.db.store_snapshot();
+                self.write_simple_string("OK");
             },
             .command_docs => {
                 var encoder = encoding.ListEncoder.init(&self.wbuf);
                 encoder.write_length() catch unreachable;
                 self.wbuf_size = encoder.n_bytes;
-                self.start_writing();
             },
         }
     }
 
     fn write_error(self: *Self, err: []const u8) void {
         self.wbuf_size = encoding.encode_err(&self.wbuf, err) catch unreachable;
-        self.start_writing();
     }
 
     fn write_simple_string(self: *Self, value: []const u8) void {
         self.wbuf_size = encoding.encode_simple_string(&self.wbuf, value) catch unreachable;
-        self.start_writing();
     }
 
     fn write_bulk_string(self: *Self, value: []const u8) void {
         self.wbuf_size = encoding.encode_bulk_string(&self.wbuf, value) catch unreachable;
-        self.start_writing();
     }
 
     fn write_value(self: *Self, value: parsing.RedisValue) !void {
@@ -163,7 +163,6 @@ pub const Connection = struct {
             .boolean => |v| try encoding.encode_bool(&self.wbuf, v),
             .float => |v| try encoding.encode_float(&self.wbuf, v),
         };
-        self.start_writing();
     }
 
     fn start_writing(self: *Self) void {

@@ -6,6 +6,7 @@ pub const Command = union(enum) {
     set: SetCommand,
     get: []const u8,
     config_get: []const u8,
+    save: void,
     command_docs: void,
 };
 
@@ -98,6 +99,8 @@ pub const Parser = struct {
             if (std.ascii.eqlIgnoreCase("GET", command_type)) {
                 return Command{ .config_get = try self.parse([]const u8, false) };
             }
+        } else if (std.ascii.eqlIgnoreCase("SAVE", command)) {
+            return Command{ .save = {} };
         } else if (std.ascii.eqlIgnoreCase("COMMAND", command)) {
             const command_type = try self.parse([]const u8, false);
             if (std.ascii.eqlIgnoreCase("DOCS", command_type)) {
