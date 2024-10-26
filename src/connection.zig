@@ -170,12 +170,4 @@ pub const Connection = struct {
         self.state = .state_res;
         self.handle_write() catch unreachable;
     }
-
-    fn set_response(self: *Self, comptime format: []const u8, args: anytype) void {
-        const slice = std.fmt.bufPrint(&self.wbuf, format, args) catch unreachable;
-        self.wbuf_size = slice.len;
-        self.rbuf_size = 0;
-        self.state = .state_res;
-        self.handle_write() catch unreachable;
-    }
 };
