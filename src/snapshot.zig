@@ -16,8 +16,10 @@ const TYPE_STRING: u8 = 0x00;
 const TYPE_LIST: u8 = 0x01;
 
 pub fn store_snapshot(allocator: std.mem.Allocator, path: []const u8, file_name: []const u8, storage: std.StringHashMap(RedisEntry)) !void {
-    const file_path = try std.mem.concat(allocator, u8, .{ path, file_name });
+    const file_path = try std.mem.concat(allocator, u8, &.{ path, file_name });
     defer allocator.free(file_path);
+
+    _ = storage;
 
     var file: std.fs.File = undefined;
     defer file.close();
